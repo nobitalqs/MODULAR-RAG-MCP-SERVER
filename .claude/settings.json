@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install*)",
+      "Bash(source .venv*)",
+      "Bash(pytest*)",
+      "Bash(python*)",
+      "Write",
+      "Edit",
+      "Read"
+    ]
+  }
+}

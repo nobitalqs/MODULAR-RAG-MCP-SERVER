@@ -9,6 +9,8 @@ from unittest import mock
 
 import pytest
 
+from dataclasses import FrozenInstanceError
+
 from src.core.settings import (
     Settings,
     SettingsError,
@@ -471,3 +473,62 @@ class TestVectorStoreForwardCompat:
 
         assert settings.vector_store.host == "chromadb.example.com"
         assert settings.vector_store.port == 8000
+
+
+# ---------------------------------------------------------------------------
+# CacheSettings
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestCacheSettings:
+    """Tests for optional cache configuration section."""
+
+    def test_cache_defaults_to_none(self, tmp_path: Path) -> None:
+        """When no cache section, settings.cache is None."""
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.cache is None
+
+    def test_load_cache_memory_provider(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        cache:
+          provider: memory
+          default_ttl: 3600
+          max_memory_items: 10000
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.cache is not None
+        assert s.cache.provider == "memory"
+        assert s.cache.default_ttl == 3600
+        assert s.cache.max_memory_items == 10000
+        assert s.cache.redis_url is None
+
+    def test_load_cache_redis_provider(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        cache:
+          provider: redis
+          redis_url: "redis://localhost:6379/0"
+          default_ttl: 1800
+          max_memory_items: 5000
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.cache.provider == "redis"
+        assert s.cache.redis_url == "redis://localhost:6379/0"
+
+    def test_cache_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        cache:
+          provider: memory
+          default_ttl: 3600
+          max_memory_items: 10000
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.cache.provider = "redis"

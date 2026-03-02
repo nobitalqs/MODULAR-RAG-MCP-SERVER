@@ -257,6 +257,14 @@ class DashboardSettings:
 
 
 @dataclass(frozen=True)
+class CacheSettings:
+    provider: str             # "memory" | "redis"
+    default_ttl: int          # seconds
+    max_memory_items: int     # LRU cap for in-memory provider
+    redis_url: str | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     """Root settings container. Immutable after construction."""
 
@@ -270,6 +278,7 @@ class Settings:
     ingestion: IngestionSettings | None = None
     vision_llm: VisionLLMSettings | None = None
     dashboard: DashboardSettings | None = None
+    cache: CacheSettings | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -321,6 +330,16 @@ class Settings:
                 enabled=_require_bool(dash, "enabled", "dashboard"),
                 port=_require_int(dash, "port", "dashboard"),
                 traces_dir=_require_str(dash, "traces_dir", "dashboard"),
+            )
+
+        cache_settings = None
+        if "cache" in data:
+            cache_data = _require_mapping(data, "cache", "settings")
+            cache_settings = CacheSettings(
+                provider=_require_str(cache_data, "provider", "cache"),
+                default_ttl=_require_int(cache_data, "default_ttl", "cache"),
+                max_memory_items=_require_int(cache_data, "max_memory_items", "cache"),
+                redis_url=cache_data.get("redis_url"),
             )
 
         llm_provider = _require_str(llm, "provider", "llm")
@@ -389,6 +408,7 @@ class Settings:
             ingestion=ingestion_settings,
             vision_llm=vision_llm_settings,
             dashboard=dashboard_settings,
+            cache=cache_settings,
         )
 
 

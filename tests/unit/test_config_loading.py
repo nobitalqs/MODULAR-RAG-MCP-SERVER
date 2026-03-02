@@ -646,3 +646,47 @@ class TestCircuitBreakerSettings:
         s = load_settings(settings_path)
         with pytest.raises(FrozenInstanceError):
             s.llm.circuit_breaker.enabled = False
+
+
+# ---------------------------------------------------------------------------
+# QueryRewritingSettings
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestQueryRewritingSettings:
+    """Tests for optional query_rewriting configuration section."""
+
+    def test_query_rewriting_defaults_to_none(self, tmp_path: Path) -> None:
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.query_rewriting is None
+
+    def test_load_query_rewriting_settings(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        query_rewriting:
+          enabled: true
+          provider: llm
+          max_rewrites: 3
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.query_rewriting is not None
+        assert s.query_rewriting.enabled is True
+        assert s.query_rewriting.provider == "llm"
+        assert s.query_rewriting.max_rewrites == 3
+        assert s.query_rewriting.model is None
+
+    def test_query_rewriting_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        query_rewriting:
+          enabled: true
+          provider: llm
+          max_rewrites: 3
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.query_rewriting.enabled = False

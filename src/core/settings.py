@@ -294,6 +294,14 @@ class RateLimitSettings:
 
 
 @dataclass(frozen=True)
+class QueryRewritingSettings:
+    enabled: bool
+    provider: str          # "none" | "llm" | "hyde"
+    max_rewrites: int
+    model: str | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     """Root settings container. Immutable after construction."""
 
@@ -309,6 +317,7 @@ class Settings:
     dashboard: DashboardSettings | None = None
     cache: CacheSettings | None = None
     rate_limit: RateLimitSettings | None = None
+    query_rewriting: QueryRewritingSettings | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -382,6 +391,16 @@ class Settings:
                 max_concurrent=_require_int(rl, "max_concurrent", "rate_limit"),
                 tokens_per_minute=rl.get("tokens_per_minute"),
                 redis_url=rl.get("redis_url"),
+            )
+
+        query_rewriting_settings = None
+        if "query_rewriting" in data:
+            qr = _require_mapping(data, "query_rewriting", "settings")
+            query_rewriting_settings = QueryRewritingSettings(
+                enabled=_require_bool(qr, "enabled", "query_rewriting"),
+                provider=_require_str(qr, "provider", "query_rewriting"),
+                max_rewrites=_require_int(qr, "max_rewrites", "query_rewriting"),
+                model=qr.get("model"),
             )
 
         # Parse circuit_breaker sub-section of llm
@@ -481,6 +500,7 @@ class Settings:
             dashboard=dashboard_settings,
             cache=cache_settings,
             rate_limit=rate_limit_settings,
+            query_rewriting=query_rewriting_settings,
         )
 
 

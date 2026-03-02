@@ -580,3 +580,69 @@ class TestRateLimitSettings:
         s = load_settings(settings_path)
         with pytest.raises(FrozenInstanceError):
             s.rate_limit.enabled = False
+
+
+# ---------------------------------------------------------------------------
+# CircuitBreakerSettings / FallbackProviderSettings on LLMSettings
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestCircuitBreakerSettings:
+    """Tests for circuit_breaker and fallback_providers on LLM section."""
+
+    def test_circuit_breaker_defaults_to_none(self, tmp_path: Path) -> None:
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.llm.circuit_breaker is None
+        assert s.llm.fallback_providers is None
+
+    def test_load_circuit_breaker_settings(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML.replace(
+            "  max_tokens: 1024",
+            "  max_tokens: 1024\n"
+            "  circuit_breaker:\n"
+            "    enabled: true\n"
+            "    failure_threshold: 3\n"
+            "    cooldown_seconds: 30.0\n"
+            "    half_open_max_calls: 1",
+        )
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.llm.circuit_breaker is not None
+        assert s.llm.circuit_breaker.enabled is True
+        assert s.llm.circuit_breaker.failure_threshold == 3
+        assert s.llm.circuit_breaker.cooldown_seconds == 30.0
+
+    def test_load_fallback_providers(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML.replace(
+            "  max_tokens: 1024",
+            "  max_tokens: 1024\n"
+            "  fallback_providers:\n"
+            "    - provider: ollama\n"
+            "      model: llama3\n",
+        )
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.llm.fallback_providers is not None
+        assert len(s.llm.fallback_providers) == 1
+        assert s.llm.fallback_providers[0].provider == "ollama"
+        assert s.llm.fallback_providers[0].model == "llama3"
+
+    def test_circuit_breaker_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML.replace(
+            "  max_tokens: 1024",
+            "  max_tokens: 1024\n"
+            "  circuit_breaker:\n"
+            "    enabled: true\n"
+            "    failure_threshold: 3\n"
+            "    cooldown_seconds: 30.0\n"
+            "    half_open_max_calls: 1",
+        )
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.llm.circuit_breaker.enabled = False

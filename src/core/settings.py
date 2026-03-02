@@ -157,6 +157,23 @@ def _resolve_base_url(data: dict[str, Any], provider: str) -> str | None:
 
 
 @dataclass(frozen=True)
+class CircuitBreakerSettings:
+    enabled: bool
+    failure_threshold: int
+    cooldown_seconds: float
+    half_open_max_calls: int = 1
+
+
+@dataclass(frozen=True)
+class FallbackProviderSettings:
+    provider: str
+    model: str
+    api_key: str | None = None
+    azure_endpoint: str | None = None
+    base_url: str | None = None
+
+
+@dataclass(frozen=True)
 class LLMSettings:
     provider: str
     model: str
@@ -167,6 +184,8 @@ class LLMSettings:
     azure_endpoint: str | None = None
     deployment_name: str | None = None
     base_url: str | None = None
+    circuit_breaker: CircuitBreakerSettings | None = None
+    fallback_providers: list[FallbackProviderSettings] | None = None
 
 
 @dataclass(frozen=True)
@@ -365,6 +384,33 @@ class Settings:
                 redis_url=rl.get("redis_url"),
             )
 
+        # Parse circuit_breaker sub-section of llm
+        cb_settings = None
+        if "circuit_breaker" in llm:
+            cb_data = _require_mapping(llm, "circuit_breaker", "llm")
+            cb_settings = CircuitBreakerSettings(
+                enabled=_require_bool(cb_data, "enabled", "llm.circuit_breaker"),
+                failure_threshold=_require_int(cb_data, "failure_threshold", "llm.circuit_breaker"),
+                cooldown_seconds=_require_number(cb_data, "cooldown_seconds", "llm.circuit_breaker"),
+                half_open_max_calls=cb_data.get("half_open_max_calls", 1),
+            )
+
+        # Parse fallback_providers sub-section of llm
+        fallback_list = None
+        if "fallback_providers" in llm:
+            raw_fallbacks = llm["fallback_providers"]
+            if isinstance(raw_fallbacks, list):
+                fallback_list = [
+                    FallbackProviderSettings(
+                        provider=_require_str(fb, "provider", f"llm.fallback_providers[{i}]"),
+                        model=_require_str(fb, "model", f"llm.fallback_providers[{i}]"),
+                        api_key=fb.get("api_key"),
+                        azure_endpoint=fb.get("azure_endpoint"),
+                        base_url=fb.get("base_url"),
+                    )
+                    for i, fb in enumerate(raw_fallbacks)
+                ]
+
         llm_provider = _require_str(llm, "provider", "llm")
         emb_provider = _require_str(embedding, "provider", "embedding")
         rerank_provider = _require_str(rerank, "provider", "rerank")
@@ -380,6 +426,8 @@ class Settings:
                 azure_endpoint=_resolve_azure_endpoint(llm, llm_provider),
                 deployment_name=llm.get("deployment_name"),
                 base_url=_resolve_base_url(llm, llm_provider),
+                circuit_breaker=cb_settings,
+                fallback_providers=fallback_list,
             ),
             embedding=EmbeddingSettings(
                 provider=emb_provider,

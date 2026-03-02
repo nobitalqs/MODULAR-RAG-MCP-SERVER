@@ -101,6 +101,62 @@ class LLMFactory:
         kwargs = {k: v for k, v in fields.items() if v is not None}
         return self.create(provider, **kwargs)
 
+    def create_with_failover(
+        self,
+        settings: LLMSettings,
+    ) -> BaseLLM:
+        """Create an LLM with optional circuit breaker and failover chain.
+
+        When ``fallback_providers`` is configured, returns a ProviderChain
+        that tries providers in order. Otherwise returns a single BaseLLM
+        (optionally wrapped with a circuit breaker via the ``protect``
+        decorator — but that's left to the caller).
+
+        Args:
+            settings: Parsed LLM configuration with optional
+                circuit_breaker and fallback_providers.
+
+        Returns:
+            A single BaseLLM or a ProviderChain for multi-provider failover.
+        """
+        primary = self.create_from_settings(settings)
+
+        # No fallbacks → return single LLM
+        if not settings.fallback_providers:
+            return primary
+
+        # Lazy imports to avoid circular dependency (llm/__init__ → llm_factory → provider_chain → base_llm)
+        from src.libs.circuit_breaker.circuit_breaker import CircuitBreaker
+        from src.libs.circuit_breaker.provider_chain import ProviderChain
+
+        # Build circuit breaker config
+        cb_cfg = settings.circuit_breaker
+        if cb_cfg and cb_cfg.enabled:
+            make_cb = lambda: CircuitBreaker(
+                failure_threshold=cb_cfg.failure_threshold,
+                cooldown=cb_cfg.cooldown_seconds,
+            )
+        else:
+            # Default lenient circuit breaker for chain orchestration
+            make_cb = lambda: CircuitBreaker(failure_threshold=5, cooldown=60.0)
+
+        providers: list[tuple[BaseLLM, CircuitBreaker]] = [
+            (primary, make_cb()),
+        ]
+
+        for fb in settings.fallback_providers:
+            fb_kwargs: dict[str, Any] = {"model": fb.model}
+            if fb.api_key:
+                fb_kwargs["api_key"] = fb.api_key
+            if fb.azure_endpoint:
+                fb_kwargs["azure_endpoint"] = fb.azure_endpoint
+            if fb.base_url:
+                fb_kwargs["base_url"] = fb.base_url
+            fb_llm = self.create(fb.provider, **fb_kwargs)
+            providers.append((fb_llm, make_cb()))
+
+        return ProviderChain(providers)
+
     def list_providers(self) -> list[str]:
         """Return sorted list of registered provider names."""
         return sorted(self._providers)

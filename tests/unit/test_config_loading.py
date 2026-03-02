@@ -532,3 +532,51 @@ class TestCacheSettings:
         s = load_settings(settings_path)
         with pytest.raises(FrozenInstanceError):
             s.cache.provider = "redis"
+
+
+# ---------------------------------------------------------------------------
+# RateLimitSettings
+# ---------------------------------------------------------------------------
+
+@pytest.mark.unit
+class TestRateLimitSettings:
+    """Tests for optional rate_limit configuration section."""
+
+    def test_rate_limit_defaults_to_none(self, tmp_path: Path) -> None:
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.rate_limit is None
+
+    def test_load_rate_limit_settings(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        rate_limit:
+          enabled: true
+          provider: token_bucket
+          requests_per_minute: 60
+          max_concurrent: 10
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.rate_limit is not None
+        assert s.rate_limit.enabled is True
+        assert s.rate_limit.provider == "token_bucket"
+        assert s.rate_limit.requests_per_minute == 60
+        assert s.rate_limit.max_concurrent == 10
+        assert s.rate_limit.tokens_per_minute is None
+        assert s.rate_limit.redis_url is None
+
+    def test_rate_limit_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        rate_limit:
+          enabled: true
+          provider: token_bucket
+          requests_per_minute: 60
+          max_concurrent: 10
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.rate_limit.enabled = False

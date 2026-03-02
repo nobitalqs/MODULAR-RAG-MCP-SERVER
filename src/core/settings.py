@@ -265,6 +265,16 @@ class CacheSettings:
 
 
 @dataclass(frozen=True)
+class RateLimitSettings:
+    enabled: bool
+    provider: str             # "token_bucket" | "redis"
+    requests_per_minute: int
+    max_concurrent: int
+    tokens_per_minute: int | None = None
+    redis_url: str | None = None  # reuses cache.redis_url if not set
+
+
+@dataclass(frozen=True)
 class Settings:
     """Root settings container. Immutable after construction."""
 
@@ -279,6 +289,7 @@ class Settings:
     vision_llm: VisionLLMSettings | None = None
     dashboard: DashboardSettings | None = None
     cache: CacheSettings | None = None
+    rate_limit: RateLimitSettings | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -340,6 +351,18 @@ class Settings:
                 default_ttl=_require_int(cache_data, "default_ttl", "cache"),
                 max_memory_items=_require_int(cache_data, "max_memory_items", "cache"),
                 redis_url=cache_data.get("redis_url"),
+            )
+
+        rate_limit_settings = None
+        if "rate_limit" in data:
+            rl = _require_mapping(data, "rate_limit", "settings")
+            rate_limit_settings = RateLimitSettings(
+                enabled=_require_bool(rl, "enabled", "rate_limit"),
+                provider=_require_str(rl, "provider", "rate_limit"),
+                requests_per_minute=_require_int(rl, "requests_per_minute", "rate_limit"),
+                max_concurrent=_require_int(rl, "max_concurrent", "rate_limit"),
+                tokens_per_minute=rl.get("tokens_per_minute"),
+                redis_url=rl.get("redis_url"),
             )
 
         llm_provider = _require_str(llm, "provider", "llm")
@@ -409,6 +432,7 @@ class Settings:
             vision_llm=vision_llm_settings,
             dashboard=dashboard_settings,
             cache=cache_settings,
+            rate_limit=rate_limit_settings,
         )
 
 

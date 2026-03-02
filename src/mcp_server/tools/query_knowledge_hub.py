@@ -64,6 +64,10 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
             "type": "string",
             "description": "Optional collection name to limit the search scope.",
         },
+        "session_id": {
+            "type": "string",
+            "description": "Optional session ID for conversation memory.",
+        },
     },
     "required": ["query"],
 }
@@ -131,12 +135,71 @@ class QueryKnowledgeHubTool:
         self._initialized = False
         self._current_collection: Optional[str] = None
 
+        # Phase J: Advanced components (lazy-initialized)
+        self._conversation_memory = None
+        self._query_rewriter = None
+        self._rate_limiter = None
+        self._query_router = None
+        self._advanced_initialized = False
+
     @property
     def settings(self) -> Settings:
         """Get settings, loading if necessary."""
         if self._settings is None:
             self._settings = load_settings()
         return self._settings
+
+    def _init_advanced_components(self) -> None:
+        """Lazy-init Phase J components from settings (idempotent)."""
+        if self._advanced_initialized:
+            return
+        self._advanced_initialized = True
+
+        s = self.settings
+
+        # Rate limiter
+        if s.rate_limit is not None:
+            from src.libs.rate_limiter.limiter_factory import RateLimiterFactory
+            self._rate_limiter = RateLimiterFactory.create_from_settings(s.rate_limit)
+
+        # Query rewriter
+        if s.query_rewriting is not None:
+            from src.libs.query_rewriter.rewriter_factory import QueryRewriterFactory
+            llm = None
+            if s.query_rewriting.enabled and s.query_rewriting.provider != "none":
+                from src.libs.llm.llm_factory import LLMFactory
+                llm = LLMFactory.create(s)
+            self._query_rewriter = QueryRewriterFactory.create_from_settings(
+                s.query_rewriting, llm=llm,
+            )
+
+        # Conversation memory
+        if s.memory is not None and s.memory.enabled:
+            from src.libs.memory.memory_factory import MemoryFactory
+            from src.libs.memory.conversation_memory import ConversationMemory
+            store = MemoryFactory.create_from_settings(s.memory)
+            llm = None
+            if s.memory.summarize_enabled:
+                from src.libs.llm.llm_factory import LLMFactory
+                llm = LLMFactory.create(s)
+            self._conversation_memory = ConversationMemory(
+                store=store,
+                max_turns=s.memory.max_turns,
+                summarize_threshold=s.memory.summarize_threshold,
+                summarize_enabled=s.memory.summarize_enabled,
+                llm=llm,
+            )
+
+        # Query router
+        if s.query_routing is not None:
+            from src.libs.query_router.router_factory import QueryRouterFactory
+            llm = None
+            if s.query_routing.enabled and s.query_routing.provider != "none":
+                from src.libs.llm.llm_factory import LLMFactory
+                llm = LLMFactory.create(s)
+            self._query_router = QueryRouterFactory.create_from_settings(
+                s.query_routing, llm=llm,
+            )
 
     def _ensure_initialized(self, collection: str) -> None:
         """Ensure search components are initialized for the given collection.
@@ -222,6 +285,7 @@ class QueryKnowledgeHubTool:
         query: str,
         top_k: Optional[int] = None,
         collection: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> MCPToolResponse:
         """Execute the query_knowledge_hub tool.
 
@@ -229,6 +293,7 @@ class QueryKnowledgeHubTool:
             query: Search query string.
             top_k: Maximum results to return.
             collection: Target collection name.
+            session_id: Optional session ID for conversation memory.
 
         Returns:
             MCPToolResponse with formatted content and citations.
@@ -249,8 +314,8 @@ class QueryKnowledgeHubTool:
 
         logger.info(
             "Executing query_knowledge_hub: query='%s...', "
-            "top_k=%d, collection=%s",
-            query[:50], effective_top_k, effective_collection,
+            "top_k=%d, collection=%s, session_id=%s",
+            query[:50], effective_top_k, effective_collection, session_id,
         )
 
         trace = TraceContext(trace_type="query")
@@ -258,6 +323,8 @@ class QueryKnowledgeHubTool:
         trace.metadata["top_k"] = effective_top_k
         trace.metadata["collection"] = effective_collection
         trace.metadata["source"] = "mcp"
+        if session_id:
+            trace.metadata["session_id"] = session_id
 
         try:
             # Initialize components for collection
@@ -265,21 +332,42 @@ class QueryKnowledgeHubTool:
             import time as _time
             _init_t0 = _time.monotonic()
             await asyncio.to_thread(self._ensure_initialized, effective_collection)
+            self._init_advanced_components()
             _init_elapsed = (_time.monotonic() - _init_t0) * 1000.0
             trace.record_stage("initialization", {
                 "collection": effective_collection,
                 "cold_start": _init_elapsed > 500,
             }, elapsed_ms=_init_elapsed)
 
+            # Phase J: Rate limiter acquire
+            if self._rate_limiter is not None:
+                self._rate_limiter.acquire()
+
+            # Phase J: Get conversation context
+            search_query = query
+            if session_id and self._conversation_memory is not None:
+                ctx = self._conversation_memory.get_context(session_id)
+                trace.metadata["memory_turns"] = len(ctx.turns)
+
+            # Phase J: Query rewriting
+            if self._query_rewriter is not None:
+                try:
+                    search_query = self._query_rewriter.rewrite(query)
+                    if search_query != query:
+                        trace.metadata["rewritten_query"] = search_query[:200]
+                except Exception as exc:
+                    logger.warning("Query rewriter failed, using original: %s", exc)
+                    search_query = query
+
             # Perform hybrid search (blocking: embedding API + DB queries)
             results = await asyncio.to_thread(
-                self._perform_search, query, effective_top_k, trace,
+                self._perform_search, search_query, effective_top_k, trace,
             )
 
             # Apply reranking if enabled (may call LLM API)
             if self.config.enable_rerank and results:
                 results = await asyncio.to_thread(
-                    self._apply_rerank, query, results, effective_top_k, trace,
+                    self._apply_rerank, search_query, results, effective_top_k, trace,
                 )
 
             # Build response
@@ -301,6 +389,21 @@ class QueryKnowledgeHubTool:
                 for r in results
             ]
 
+            # Phase J: Store conversation turn
+            if session_id and self._conversation_memory is not None:
+                try:
+                    self._conversation_memory.add_turn(session_id, "user", query)
+                    summary = response.content[:500] if response.content else ""
+                    self._conversation_memory.add_turn(
+                        session_id, "assistant", summary,
+                    )
+                except Exception as exc:
+                    logger.warning("Memory add_turn failed: %s", exc)
+
+            # Phase J: Rate limiter release
+            if self._rate_limiter is not None:
+                self._rate_limiter.release()
+
             logger.info(
                 "query_knowledge_hub completed: %d results, is_empty=%s",
                 len(results), response.is_empty,
@@ -311,6 +414,9 @@ class QueryKnowledgeHubTool:
             return response
 
         except Exception as e:
+            # Phase J: Rate limiter release on error
+            if self._rate_limiter is not None:
+                self._rate_limiter.release()
             logger.exception("query_knowledge_hub failed: %s", e)
             self._collect_trace(trace)
             return self._build_error_response(query, effective_collection, str(e))
@@ -460,6 +566,7 @@ async def query_knowledge_hub_handler(
     query: str,
     top_k: int = 5,
     collection: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> types.CallToolResult:
     """Handler function for MCP tool registration.
 
@@ -470,6 +577,7 @@ async def query_knowledge_hub_handler(
         query: Search query string.
         top_k: Maximum number of results.
         collection: Optional collection name.
+        session_id: Optional session ID for conversation memory.
 
     Returns:
         MCP CallToolResult with content blocks.
@@ -481,6 +589,7 @@ async def query_knowledge_hub_handler(
             query=query,
             top_k=top_k,
             collection=collection,
+            session_id=session_id,
         )
 
         # Use to_mcp_content() which handles multimodal (text + images)

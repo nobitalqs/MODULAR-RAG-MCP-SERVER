@@ -690,3 +690,50 @@ class TestQueryRewritingSettings:
         s = load_settings(settings_path)
         with pytest.raises(FrozenInstanceError):
             s.query_rewriting.enabled = False
+
+
+class TestMemorySettings:
+    """Tests for optional memory configuration section."""
+
+    def test_memory_defaults_to_none(self, tmp_path: Path) -> None:
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.memory is None
+
+    def test_load_memory_settings(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        memory:
+          enabled: true
+          provider: memory
+          max_turns: 20
+          summarize_threshold: 10
+          summarize_enabled: true
+          session_ttl: 3600
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.memory is not None
+        assert s.memory.enabled is True
+        assert s.memory.provider == "memory"
+        assert s.memory.max_turns == 20
+        assert s.memory.summarize_threshold == 10
+        assert s.memory.summarize_enabled is True
+        assert s.memory.session_ttl == 3600
+
+    def test_memory_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        memory:
+          enabled: true
+          provider: memory
+          max_turns: 20
+          summarize_threshold: 10
+          summarize_enabled: false
+          session_ttl: 3600
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.memory.enabled = False

@@ -302,6 +302,16 @@ class QueryRewritingSettings:
 
 
 @dataclass(frozen=True)
+class MemorySettings:
+    enabled: bool
+    provider: str           # "memory" | "redis"
+    max_turns: int
+    summarize_threshold: int
+    summarize_enabled: bool
+    session_ttl: int
+
+
+@dataclass(frozen=True)
 class Settings:
     """Root settings container. Immutable after construction."""
 
@@ -318,6 +328,7 @@ class Settings:
     cache: CacheSettings | None = None
     rate_limit: RateLimitSettings | None = None
     query_rewriting: QueryRewritingSettings | None = None
+    memory: MemorySettings | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -401,6 +412,18 @@ class Settings:
                 provider=_require_str(qr, "provider", "query_rewriting"),
                 max_rewrites=_require_int(qr, "max_rewrites", "query_rewriting"),
                 model=qr.get("model"),
+            )
+
+        memory_settings = None
+        if "memory" in data:
+            mem = _require_mapping(data, "memory", "settings")
+            memory_settings = MemorySettings(
+                enabled=_require_bool(mem, "enabled", "memory"),
+                provider=_require_str(mem, "provider", "memory"),
+                max_turns=_require_int(mem, "max_turns", "memory"),
+                summarize_threshold=_require_int(mem, "summarize_threshold", "memory"),
+                summarize_enabled=_require_bool(mem, "summarize_enabled", "memory"),
+                session_ttl=_require_int(mem, "session_ttl", "memory"),
             )
 
         # Parse circuit_breaker sub-section of llm
@@ -501,6 +524,7 @@ class Settings:
             cache=cache_settings,
             rate_limit=rate_limit_settings,
             query_rewriting=query_rewriting_settings,
+            memory=memory_settings,
         )
 
 

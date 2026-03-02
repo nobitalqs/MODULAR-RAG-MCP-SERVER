@@ -312,6 +312,20 @@ class MemorySettings:
 
 
 @dataclass(frozen=True)
+class RouteConfig:
+    name: str
+    description: str
+
+
+@dataclass(frozen=True)
+class QueryRoutingSettings:
+    enabled: bool
+    provider: str          # "none" | "llm"
+    routes: tuple[RouteConfig, ...]
+    model: str | None = None
+
+
+@dataclass(frozen=True)
 class Settings:
     """Root settings container. Immutable after construction."""
 
@@ -329,6 +343,7 @@ class Settings:
     rate_limit: RateLimitSettings | None = None
     query_rewriting: QueryRewritingSettings | None = None
     memory: MemorySettings | None = None
+    query_routing: QueryRoutingSettings | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Settings:
@@ -424,6 +439,26 @@ class Settings:
                 summarize_threshold=_require_int(mem, "summarize_threshold", "memory"),
                 summarize_enabled=_require_bool(mem, "summarize_enabled", "memory"),
                 session_ttl=_require_int(mem, "session_ttl", "memory"),
+            )
+
+        query_routing_settings = None
+        if "query_routing" in data:
+            qr_data = _require_mapping(data, "query_routing", "settings")
+            raw_routes = qr_data.get("routes", [])
+            if not isinstance(raw_routes, list):
+                raise SettingsError("query_routing.routes must be a list")
+            routes = tuple(
+                RouteConfig(
+                    name=_require_str(r, "name", f"query_routing.routes[{i}]"),
+                    description=_require_str(r, "description", f"query_routing.routes[{i}]"),
+                )
+                for i, r in enumerate(raw_routes)
+            )
+            query_routing_settings = QueryRoutingSettings(
+                enabled=_require_bool(qr_data, "enabled", "query_routing"),
+                provider=_require_str(qr_data, "provider", "query_routing"),
+                routes=routes,
+                model=qr_data.get("model"),
             )
 
         # Parse circuit_breaker sub-section of llm
@@ -525,6 +560,7 @@ class Settings:
             rate_limit=rate_limit_settings,
             query_rewriting=query_rewriting_settings,
             memory=memory_settings,
+            query_routing=query_routing_settings,
         )
 
 

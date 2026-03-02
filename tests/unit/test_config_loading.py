@@ -737,3 +737,65 @@ class TestMemorySettings:
         s = load_settings(settings_path)
         with pytest.raises(FrozenInstanceError):
             s.memory.enabled = False
+
+
+class TestQueryRoutingSettings:
+    """Tests for optional query_routing configuration section."""
+
+    def test_query_routing_defaults_to_none(self, tmp_path: Path) -> None:
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, MINIMAL_YAML)
+        s = load_settings(settings_path)
+        assert s.query_routing is None
+
+    def test_load_query_routing_settings(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        query_routing:
+          enabled: true
+          provider: llm
+          routes:
+            - name: knowledge_search
+              description: Search the knowledge base
+            - name: direct_answer
+              description: Answer directly without retrieval
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.query_routing is not None
+        assert s.query_routing.enabled is True
+        assert s.query_routing.provider == "llm"
+        assert len(s.query_routing.routes) == 2
+        assert s.query_routing.routes[0].name == "knowledge_search"
+        assert s.query_routing.routes[1].description == "Answer directly without retrieval"
+        assert s.query_routing.model is None
+
+    def test_query_routing_with_model(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        query_routing:
+          enabled: true
+          provider: llm
+          model: gpt-4o-mini
+          routes:
+            - name: knowledge_search
+              description: Search the knowledge base
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        assert s.query_routing.model == "gpt-4o-mini"
+
+    def test_query_routing_settings_are_frozen(self, tmp_path: Path) -> None:
+        config = MINIMAL_YAML + textwrap.dedent("""\
+        query_routing:
+          enabled: true
+          provider: llm
+          routes:
+            - name: knowledge_search
+              description: Search the knowledge base
+        """)
+        settings_path = tmp_path / "s.yaml"
+        _write_yaml(settings_path, config)
+        s = load_settings(settings_path)
+        with pytest.raises(FrozenInstanceError):
+            s.query_routing.enabled = False

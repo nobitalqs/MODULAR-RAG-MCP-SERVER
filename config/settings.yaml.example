@@ -1,0 +1,175 @@
+# Modular RAG MCP Server - Configuration Example
+# Copy this file to settings.yaml and edit to match your environment.
+#
+# Secret fields (api_key, azure_endpoint, base_url) support env var fallback:
+#   - Set them in .env file (see .env.example) or export in shell
+#   - YAML values take priority over env vars
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
+llm:
+  provider: "azure"  # Options: openai, azure, ollama, deepseek
+  model: "gpt-4o-mini"
+  deployment_name: "gpt-4o-mini"
+  api_version: "2024-02-15-preview"
+  temperature: 0.0
+  max_tokens: 4096
+  # api_key / azure_endpoint: loaded from env vars (AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT)
+  #
+  # Circuit Breaker (Phase J3) — optional failover config
+  # circuit_breaker:
+  #   failure_threshold: 5
+  #   cooldown: 60.0
+  # fallback_providers:
+  #   - provider: "ollama"
+  #     model: "llama3"
+  #     base_url: "http://localhost:11434"
+
+# =============================================================================
+# Embedding Configuration
+# =============================================================================
+embedding:
+  provider: "azure"  # Options: openai, azure, ollama
+  model: "text-embedding-3-small"
+  dimensions: 1536
+  deployment_name: "text-embedding-3-small"
+  api_version: "2024-02-15-preview"
+  # api_key / azure_endpoint: loaded from env vars
+
+# =============================================================================
+# Vision LLM Configuration (for Image Captioning)
+# =============================================================================
+vision_llm:
+  enabled: true
+  provider: "azure"  # Options: openai, azure, ollama
+  model: "gpt-4o"
+  deployment_name: "gpt-4o"
+  api_version: "2024-02-15-preview"
+  max_image_size: 2048
+  # api_key / azure_endpoint: loaded from env vars
+
+# =============================================================================
+# Vector Store Configuration
+# =============================================================================
+vector_store:
+  provider: "chroma"  # Options: chroma, qdrant, pinecone
+  persist_directory: "./data/db/chroma"
+  collection_name: "knowledge_hub"
+
+# =============================================================================
+# Retrieval Configuration
+# =============================================================================
+retrieval:
+  dense_top_k: 20
+  sparse_top_k: 20
+  fusion_top_k: 10
+  rrf_k: 60
+
+# =============================================================================
+# Rerank Configuration
+# =============================================================================
+rerank:
+  enabled: true
+  provider: "cohere"  # Options: none, cross_encoder, llm, cohere
+  model: "Cohere-rerank-v4.0-fast"
+  azure_endpoint: "https://your-endpoint.services.ai.azure.com"
+  top_k: 5
+  # api_key: loaded from env var
+
+# =============================================================================
+# Evaluation Configuration
+# =============================================================================
+evaluation:
+  enabled: true
+  provider: "ragas"  # Options: ragas, deepeval, custom
+  metrics:
+    - "faithfulness"
+    - "answer_relevancy"
+    - "context_precision"
+
+# =============================================================================
+# Observability Configuration
+# =============================================================================
+observability:
+  log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  trace_enabled: true
+  trace_file: "./logs/traces.jsonl"
+  structured_logging: true
+
+# =============================================================================
+# Ingestion Configuration
+# =============================================================================
+ingestion:
+  chunk_size: 1000
+  chunk_overlap: 200
+  splitter: "recursive"  # Options: recursive, semantic, fixed
+  batch_size: 100
+
+# =============================================================================
+# Dashboard Configuration
+# =============================================================================
+dashboard:
+  enabled: true
+  port: 8501
+  traces_dir: "./logs"
+
+# =============================================================================
+# Cache Configuration (Phase J1)
+# =============================================================================
+# Embedding cache to avoid redundant API calls. Optional — omit to disable.
+# cache:
+#   provider: "memory"         # Options: memory, redis
+#   default_ttl: 3600          # Cache TTL in seconds
+#   max_memory_items: 10000    # LRU cap for in-memory provider
+#   # redis_url: "redis://localhost:6379/0"  # Required for redis provider
+
+# =============================================================================
+# Rate Limiter Configuration (Phase J2)
+# =============================================================================
+# Token-bucket rate limiter for LLM/embedding API calls. Optional.
+# rate_limit:
+#   enabled: true
+#   provider: "token_bucket"   # Options: token_bucket
+#   requests_per_minute: 60
+#   max_concurrent: 10
+#   # tokens_per_minute: 100000  # Optional TPM limit
+#   # redis_url: "redis://localhost:6379/1"  # Optional shared limiter
+
+# =============================================================================
+# Query Rewriting Configuration (Phase J4)
+# =============================================================================
+# Expand/decompose queries before retrieval. Optional.
+# query_rewriting:
+#   enabled: true
+#   provider: "llm"            # Options: none, llm, hyde
+#   max_rewrites: 3
+#   # model: "gpt-4o-mini"    # Override LLM model for rewriting
+
+# =============================================================================
+# Session Memory Configuration (Phase J5)
+# =============================================================================
+# Conversation memory for multi-turn sessions. Optional.
+# memory:
+#   enabled: true
+#   provider: "memory"         # Options: memory, redis
+#   max_turns: 10              # Sliding window size
+#   summarize_threshold: 20    # Trigger LLM compression above this
+#   summarize_enabled: false   # Enable LLM-based summary compression
+#   session_ttl: 3600          # Session expiry in seconds
+
+# =============================================================================
+# Query Routing Configuration (Phase J6)
+# =============================================================================
+# Intent classification to route queries. Optional.
+# query_routing:
+#   enabled: true
+#   provider: "llm"            # Options: none, llm
+#   routes:
+#     - name: "knowledge_search"
+#       description: "Search the knowledge base for factual information"
+#     - name: "direct_answer"
+#       description: "Answer directly from LLM without retrieval"
+#     - name: "tool_call"
+#       description: "Invoke an external tool or API"
+#   # model: "gpt-4o-mini"    # Override LLM model for routing

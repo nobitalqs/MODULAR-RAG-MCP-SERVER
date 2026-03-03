@@ -275,7 +275,7 @@ class QueryKnowledgeHubTool:
         )
 
         bm25_indexer = BM25Indexer(
-            index_dir=str(resolve_path(f"data/db/bm25/{collection}"))
+            index_dir=str(resolve_path("data/db/bm25"))
         )
         sparse_retriever = create_sparse_retriever(
             settings=self.settings,

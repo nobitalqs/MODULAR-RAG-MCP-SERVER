@@ -67,7 +67,7 @@ class DataService:
         )
 
         bm25 = BM25Indexer(
-            index_dir=str(resolve_path(f"data/db/bm25/{target_collection}"))
+            index_dir=str(resolve_path("data/db/bm25"))
         )
         images = ImageStorage(
             db_path=str(resolve_path("data/db/image_index.db")),

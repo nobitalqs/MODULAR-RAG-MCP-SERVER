@@ -60,6 +60,7 @@ def _make_tool(
     mock_settings.rate_limit = None
     mock_settings.cache = None
     mock_settings.query_routing = None
+    mock_settings.retrieval = None
 
     mock_reranker = MagicMock(is_enabled=reranker_enabled)
     if reranker_enabled:
@@ -116,6 +117,33 @@ class TestMultiQueryFanOut:
         assert mock_hybrid.search.call_count == 3
         called_queries = [c.kwargs["query"] for c in mock_hybrid.search.call_args_list]
         assert set(called_queries) == {"sub q1", "sub q2", "sub q3"}
+
+    @pytest.mark.asyncio
+    async def test_rrf_k_reads_from_settings(self):
+        """RRF fusion k parameter should come from settings.retrieval.rrf_k."""
+        results_q1 = [_make_result("a", 0.9)]
+        results_q2 = [_make_result("b", 0.8)]
+
+        mock_hybrid = MagicMock()
+        mock_hybrid.search.side_effect = [results_q1, results_q2]
+
+        rewriter = MagicMock()
+        rewriter.rewrite.return_value = FakeRewriteResult(
+            original_query="test",
+            rewritten_queries=("q1", "q2"),
+            reasoning=None,
+            strategy="decomposition",
+        )
+
+        tool = _make_tool(rewriter=rewriter)
+        tool._hybrid_search = mock_hybrid
+        # Set custom rrf_k on settings
+        tool.settings.retrieval = MagicMock(rrf_k=42)
+
+        with patch("src.mcp_server.tools.query_knowledge_hub.RRFFusion") as mock_fusion_cls:
+            mock_fusion_cls.return_value.fuse.return_value = [_make_result("a", 0.5)]
+            await tool.execute(query="test")
+            mock_fusion_cls.assert_called_once_with(k=42)
 
     @pytest.mark.asyncio
     async def test_cross_query_deduplication(self):

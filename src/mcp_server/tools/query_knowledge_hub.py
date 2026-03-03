@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from mcp import types
 
+from src.core.query_engine.fusion import RRFFusion
 from src.core.response.response_builder import MCPToolResponse, ResponseBuilder
 from src.core.settings import Settings, load_settings, resolve_path
 from src.core.trace.trace_context import TraceContext
@@ -396,9 +397,8 @@ class QueryKnowledgeHubTool:
 
             # Cross-query RRF fusion when multiple sub-queries
             if len(per_query_results) > 1:
-                from src.core.query_engine.fusion import RRFFusion
-
-                fusion = RRFFusion(k=60)
+                rrf_k = getattr(getattr(self.settings, "retrieval", None), "rrf_k", 60)
+                fusion = RRFFusion(k=rrf_k)
                 rerank_budget = effective_top_k * 2
                 results = fusion.fuse(per_query_results, top_k=rerank_budget)
                 trace.metadata["multi_query_counts"] = [

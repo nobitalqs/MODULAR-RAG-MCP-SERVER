@@ -224,11 +224,20 @@ class VectorStoreSettings:
 
 
 @dataclass(frozen=True)
+class AdaptiveRetrievalSettings:
+    enabled: bool
+    score_threshold: float
+    expand_factor: int
+    max_retries: int
+
+
+@dataclass(frozen=True)
 class RetrievalSettings:
     dense_top_k: int
     sparse_top_k: int
     fusion_top_k: int
     rrf_k: int
+    adaptive: AdaptiveRetrievalSettings | None = None
 
 
 @dataclass(frozen=True)
@@ -246,7 +255,8 @@ class RerankSettings:
 @dataclass(frozen=True)
 class EvaluationLLMSettings:
     """Dedicated LLM config for evaluation (Ragas uses LLM-as-Judge)."""
-    provider: str               # "openai" | "azure"
+
+    provider: str  # "openai" | "azure"
     model: str
     api_key: str | None = None
     azure_endpoint: str | None = None
@@ -256,7 +266,8 @@ class EvaluationLLMSettings:
 @dataclass(frozen=True)
 class EvaluationEmbeddingSettings:
     """Dedicated embedding config for evaluation."""
-    provider: str               # "openai" | "azure"
+
+    provider: str  # "openai" | "azure"
     model: str
     api_key: str | None = None
     azure_endpoint: str | None = None
@@ -299,16 +310,16 @@ class DashboardSettings:
 
 @dataclass(frozen=True)
 class CacheSettings:
-    provider: str             # "memory" | "redis"
-    default_ttl: int          # seconds
-    max_memory_items: int     # LRU cap for in-memory provider
+    provider: str  # "memory" | "redis"
+    default_ttl: int  # seconds
+    max_memory_items: int  # LRU cap for in-memory provider
     redis_url: str | None = None
 
 
 @dataclass(frozen=True)
 class RateLimitSettings:
     enabled: bool
-    provider: str             # "token_bucket" | "redis"
+    provider: str  # "token_bucket" | "redis"
     requests_per_minute: int
     max_concurrent: int
     tokens_per_minute: int | None = None
@@ -318,7 +329,7 @@ class RateLimitSettings:
 @dataclass(frozen=True)
 class QueryRewritingSettings:
     enabled: bool
-    provider: str          # "none" | "llm" | "hyde"
+    provider: str  # "none" | "llm" | "hyde"
     max_rewrites: int
     model: str | None = None
 
@@ -326,7 +337,7 @@ class QueryRewritingSettings:
 @dataclass(frozen=True)
 class MemorySettings:
     enabled: bool
-    provider: str           # "memory" | "redis"
+    provider: str  # "memory" | "redis"
     max_turns: int
     summarize_threshold: int
     summarize_enabled: bool
@@ -342,7 +353,7 @@ class RouteConfig:
 @dataclass(frozen=True)
 class QueryRoutingSettings:
     enabled: bool
-    provider: str          # "none" | "llm"
+    provider: str  # "none" | "llm"
     routes: tuple[RouteConfig, ...]
     model: str | None = None
 
@@ -380,6 +391,17 @@ class Settings:
         rerank = _require_mapping(data, "rerank", "settings")
         evaluation = _require_mapping(data, "evaluation", "settings")
         observability = _require_mapping(data, "observability", "settings")
+
+        # Parse optional retrieval.adaptive sub-section
+        adaptive_settings = None
+        if "adaptive" in retrieval:
+            adap = _require_mapping(retrieval, "adaptive", "retrieval")
+            adaptive_settings = AdaptiveRetrievalSettings(
+                enabled=_require_bool(adap, "enabled", "retrieval.adaptive"),
+                score_threshold=_require_number(adap, "score_threshold", "retrieval.adaptive"),
+                expand_factor=_require_int(adap, "expand_factor", "retrieval.adaptive"),
+                max_retries=_require_int(adap, "max_retries", "retrieval.adaptive"),
+            )
 
         # Optional sections
         ingestion_settings = None
@@ -490,7 +512,9 @@ class Settings:
             cb_settings = CircuitBreakerSettings(
                 enabled=_require_bool(cb_data, "enabled", "llm.circuit_breaker"),
                 failure_threshold=_require_int(cb_data, "failure_threshold", "llm.circuit_breaker"),
-                cooldown_seconds=_require_number(cb_data, "cooldown_seconds", "llm.circuit_breaker"),
+                cooldown_seconds=_require_number(
+                    cb_data, "cooldown_seconds", "llm.circuit_breaker"
+                ),
                 half_open_max_calls=cb_data.get("half_open_max_calls", 1),
             )
 
@@ -551,6 +575,7 @@ class Settings:
                 sparse_top_k=_require_int(retrieval, "sparse_top_k", "retrieval"),
                 fusion_top_k=_require_int(retrieval, "fusion_top_k", "retrieval"),
                 rrf_k=_require_int(retrieval, "rrf_k", "retrieval"),
+                adaptive=adaptive_settings,
             ),
             rerank=RerankSettings(
                 enabled=_require_bool(rerank, "enabled", "rerank"),

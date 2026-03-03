@@ -65,6 +65,11 @@ retrieval:
   sparse_top_k: 20
   fusion_top_k: 10
   rrf_k: 60
+  adaptive:
+    enabled: true
+    score_threshold: 0.0
+    expand_factor: 2
+    max_retries: 1
 
 # =============================================================================
 # Rerank Configuration

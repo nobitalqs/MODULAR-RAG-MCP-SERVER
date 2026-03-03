@@ -2,25 +2,13 @@
 
 # Modular RAG MCP Server
 
-**[English](#-overview)** | **[中文](#-项目简介)**
-
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Compatible-8A2BE2?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQxIDAtOC0zLjU5LTgtOHMzLjU5LTggOC04IDggMy41OSA4IDgtMy41OSA4LTggNHoiLz48L3N2Zz4=)](https://modelcontextprotocol.io)
 [![Tests](https://img.shields.io/badge/Tests-1683%20passed-success?logo=pytest&logoColor=white)](tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-%E2%89%A580%25-success)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<br>
-
-A **production-ready, fully modular** Retrieval-Augmented Generation system with **Model Context Protocol** integration.
-Zero-code component switching. Full-pipeline observability. Plug into Copilot, Claude, or any MCP host.
-
-一个**生产就绪、全模块化**的检索增强生成系统，集成 **MCP 协议**。
-零代码切换组件，全链路可观测，即插即用对接 Copilot / Claude 等 AI 助手。
-
-<br>
-
-[Quick Start](#-quick-start) · [Architecture](#-architecture) · [Dashboard](#-dashboard) · [Evaluation](#-evaluation) · [FAQ](#-faq)
+A **production-ready, fully modular** RAG system with **MCP** integration | 一个**生产就绪、全模块化**的 RAG 系统，集成 **MCP 协议**
 
 </div>
 
@@ -30,9 +18,14 @@ Zero-code component switching. Full-pipeline observability. Plug into Copilot, C
 <!-- ENGLISH                                                     -->
 <!-- ═══════════════════════════════════════════════════════════ -->
 
-## 📖 Overview
+<details open>
+<summary><h2>📖 English</h2></summary>
+
+### Overview
 
 Modular RAG MCP Server is a **10-phase, 78-task** engineering project that implements a complete RAG pipeline — from document ingestion to hybrid search to LLM generation — all exposed via the [Model Context Protocol](https://modelcontextprotocol.io).
+
+Zero-code component switching. Full-pipeline observability. Plug into Copilot, Claude, or any MCP host.
 
 ### Why This Project?
 
@@ -54,7 +47,7 @@ Modular RAG MCP Server is a **10-phase, 78-task** engineering project that imple
 - **Advanced Features** — conversation memory, query rewriting (LLM / HyDE), circuit breaker, provider failover chain, embedding cache, rate limiting
 - **1683 Tests** — unit, integration, E2E, contract tests, and golden test set recall regression
 
-## 🏗 Architecture
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -85,31 +78,16 @@ Modular RAG MCP Server is a **10-phase, 78-task** engineering project that imple
 | **Dual Storage** | ChromaDB + BM25 pickle index | Dense semantic + sparse keyword retrieval |
 | **Circuit Breaker** | External API calls | Three-state protection (CLOSED → OPEN → HALF_OPEN) |
 
-## 📊 Evaluation
+### Evaluation
 
 The project includes a **dual evaluation system** — deterministic IR metrics for fast regression checks, and LLM-as-Judge metrics for semantic quality assessment.
-
-### Evaluation Framework
 
 | Layer | Metrics | Method | Use Case |
 |:------|:--------|:-------|:---------|
 | **IR Metrics** (Custom) | Hit Rate, MRR | Deterministic, chunk-ID matching | Fast CI regression gating |
 | **LLM-as-Judge** (Ragas) | Faithfulness, Answer Relevancy, Context Precision | LLM-based scoring | Semantic quality assessment |
 
-### Golden Test Set
-
-A curated benchmark of **16 queries across 4 categories**, evaluated against 3 indexed documents (417 chunks total):
-
-| Category | Queries | Description |
-|:---------|:-------:|:------------|
-| Exact Fact | 5 | Precise factual retrieval (e.g., "What is scaled dot-product attention?") |
-| Semantic Understanding | 5 | Paraphrased and conceptual queries |
-| Cross-Document | 3 | Queries requiring information from multiple sources |
-| Chinese | 3 | Chinese-language queries against mixed-language corpus |
-
-**Evaluation is automated** — run `python scripts/evaluate.py --test-set tests/fixtures/golden_test_set.json` to get a full metrics report with per-query breakdown.
-
-### Test Coverage
+**Golden Test Set** — 16 queries across 4 categories (exact fact, semantic understanding, cross-document, Chinese), evaluated against 3 indexed documents (417 chunks).
 
 | Type | Count | Description |
 |:-----|------:|:------------|
@@ -118,92 +96,42 @@ A curated benchmark of **16 queries across 4 categories**, evaluated against 3 i
 | E2E Tests | ~80 | MCP client, dashboard smoke, ingestion, query, recall |
 | **Total** | **1683** | All passing |
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Python 3.10+
-- At least one LLM + Embedding provider (cloud API or local [Ollama](https://ollama.ai))
-
-### Setup
+### Quick Start
 
 ```bash
-git clone https://github.com/your-org/modular-rag-mcp-server.git
-cd modular-rag-mcp-server
+git clone https://github.com/nobitalqs/MODULAR-RAG-MCP-SERVER.git
+cd MODULAR-RAG-MCP-SERVER
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp config/settings.yaml.example config/settings.yaml   # edit for your provider
 ```
 
-### Run
-
 ```bash
-# Ingest documents
-python scripts/ingest.py --path /path/to/doc.pdf --collection my_kb
-
-# Start MCP server (connects via stdio)
-python main.py
-
-# Launch dashboard
-python scripts/start_dashboard.py    # → http://localhost:8501
+python scripts/ingest.py --path /path/to/doc.pdf --collection my_kb   # ingest
+python main.py                                                         # MCP server
+python scripts/start_dashboard.py                                      # dashboard → http://localhost:8501
 ```
 
-### Connect to MCP Host
-
 <details>
-<summary><b>GitHub Copilot / VS Code</b></summary>
+<summary><b>MCP Host Configuration</b></summary>
 
-Add to `.vscode/mcp.json`:
+**GitHub Copilot / VS Code** — add to `.vscode/mcp.json`:
 ```json
-{
-  "mcpServers": {
-    "modular-rag": {
-      "command": "python",
-      "args": ["main.py"],
-      "cwd": "/path/to/modular-rag-mcp-server"
-    }
-  }
-}
+{ "mcpServers": { "modular-rag": { "command": "python", "args": ["main.py"], "cwd": "/path/to/MODULAR-RAG-MCP-SERVER" } } }
+```
+
+**Claude Desktop** — add to Claude Desktop config:
+```json
+{ "mcpServers": { "modular-rag": { "command": "python", "args": ["main.py"], "cwd": "/path/to/MODULAR-RAG-MCP-SERVER" } } }
+```
+
+**Claude Code** — add to `.claude/settings.json` or use `/mcp`:
+```json
+{ "mcpServers": { "modular-rag": { "command": "python", "args": ["main.py"], "cwd": "/path/to/MODULAR-RAG-MCP-SERVER" } } }
 ```
 </details>
 
-<details>
-<summary><b>Claude Desktop</b></summary>
-
-Add to your Claude Desktop config:
-```json
-{
-  "mcpServers": {
-    "modular-rag": {
-      "command": "python",
-      "args": ["main.py"],
-      "cwd": "/path/to/modular-rag-mcp-server"
-    }
-  }
-}
-```
-</details>
-
-<details>
-<summary><b>Claude Code</b></summary>
-
-Add to `.claude/settings.json` or use `/mcp`:
-```json
-{
-  "mcpServers": {
-    "modular-rag": {
-      "command": "python",
-      "args": ["main.py"],
-      "cwd": "/path/to/modular-rag-mcp-server"
-    }
-  }
-}
-```
-</details>
-
-## 📺 Dashboard
-
-The Streamlit dashboard provides **6 pages** of visual management and observability:
+### Dashboard
 
 | Page | Capabilities |
 |:-----|:-------------|
@@ -214,7 +142,7 @@ The Streamlit dashboard provides **6 pages** of visual management and observabil
 | **Query Traces** | Full pipeline trace: rewrite → retrieve → rerank → generate |
 | **Evaluation Panel** | Run evaluations, view IR + LLM metrics, historical trends |
 
-## 🔌 Pluggable Components
+### Pluggable Components
 
 | Component | Providers | Config Key |
 |:----------|:----------|:-----------|
@@ -231,7 +159,7 @@ The Streamlit dashboard provides **6 pages** of visual management and observabil
 
 > All components follow the **Base(ABC) → Factory(Registry) → Provider** pattern. Adding a new provider = inherit base + register.
 
-## 📂 Repository Structure
+### Repository Structure
 
 ```
 src/
@@ -251,7 +179,7 @@ scripts/               # CLI tools: ingest, query, evaluate, dashboard
 config/                # settings.yaml — single config for everything
 ```
 
-## ❓ FAQ
+### FAQ
 
 <details>
 <summary><b>Can I use a free local model?</b></summary>
@@ -283,7 +211,7 @@ LLMFactory.register_provider("my_provider", MyLLMClass)
 Default: `./logs/traces.jsonl`. Configure via `observability.trace_file` in settings.yaml.
 </details>
 
-## 📂 Branch Strategy
+### Branch Strategy
 
 | Branch | Purpose |
 |:-------|:--------|
@@ -291,9 +219,7 @@ Default: `./logs/traces.jsonl`. Configure via `observability.trace_file` in sett
 | `dev` | Full commit history — see how the project was built step by step |
 | `clean-start` | Skeleton only (Skills + DEV_SPEC) — fork this to build it yourself |
 
-## 📄 License
-
-MIT
+</details>
 
 ---
 
@@ -301,9 +227,14 @@ MIT
 <!-- 中文                                                        -->
 <!-- ═══════════════════════════════════════════════════════════ -->
 
-## 📖 项目简介
+<details>
+<summary><h2>📖 中文</h2></summary>
+
+### 项目简介
 
 Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目，实现了完整的 RAG 流水线 — 从文档摄取到混合检索到 LLM 生成 — 全部通过 [Model Context Protocol](https://modelcontextprotocol.io) 对外暴露。
+
+零代码切换组件，全链路可观测，即插即用对接 Copilot / Claude 等 AI 助手。
 
 ### 为什么做这个项目？
 
@@ -325,29 +256,16 @@ Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目
 - **高级功能** — 会话记忆、查询改写（LLM / HyDE）、熔断器、Provider 级联容错、Embedding 缓存、令牌桶限流
 - **1683 个测试** — 单元、集成、E2E、契约测试 + Golden Test Set 召回回归
 
-## 📊 评估体系
+### 评估体系
 
 项目内置 **双层评估系统** — 确定性 IR 指标用于快速回归检测，LLM-as-Judge 指标用于语义质量评估。
-
-### 评估框架
 
 | 层级 | 指标 | 方法 | 场景 |
 |:-----|:-----|:-----|:-----|
 | **IR 指标**（Custom） | Hit Rate, MRR | 确定性 chunk-ID 匹配 | CI/CD 快速回归门控 |
 | **LLM-as-Judge**（Ragas） | Faithfulness, Answer Relevancy, Context Precision | LLM 打分 | 语义质量评估 |
 
-### Golden Test Set
-
-精选 **16 条查询，4 个类别**，针对 3 份索引文档（共 417 chunks）进行评估：
-
-| 类别 | 数量 | 说明 |
-|:-----|:----:|:-----|
-| 精确事实 | 5 | 精确事实检索（如 "What is scaled dot-product attention?"） |
-| 语义理解 | 5 | 改写和概念性查询 |
-| 跨文档 | 3 | 需要综合多个文档源的信息 |
-| 中文 | 3 | 中文查询对混合语言语料库 |
-
-### 测试覆盖
+**Golden Test Set** — 精选 16 条查询，4 个类别（精确事实、语义理解、跨文档、中文），针对 3 份索引文档（共 417 chunks）进行评估。
 
 | 类型 | 数量 | 说明 |
 |:-----|-----:|:-----|
@@ -356,37 +274,23 @@ Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目
 | E2E 测试 | ~80 | MCP 客户端、仪表盘冒烟、摄取、查询、召回 |
 | **合计** | **1683** | 全部通过 |
 
-## 🚀 快速开始
-
-### 环境要求
-
-- Python 3.10+
-- 至少一个 LLM + Embedding 后端（云 API 或本地 [Ollama](https://ollama.ai)）
-
-### 安装
+### 快速开始
 
 ```bash
-git clone https://github.com/your-org/modular-rag-mcp-server.git
-cd modular-rag-mcp-server
+git clone https://github.com/nobitalqs/MODULAR-RAG-MCP-SERVER.git
+cd MODULAR-RAG-MCP-SERVER
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp config/settings.yaml.example config/settings.yaml   # 按需修改
 ```
 
-### 运行
-
 ```bash
-# 摄取文档
-python scripts/ingest.py --path /path/to/doc.pdf --collection my_kb
-
-# 启动 MCP 服务器（通过 stdio 通信）
-python main.py
-
-# 启动仪表盘
-python scripts/start_dashboard.py    # → http://localhost:8501
+python scripts/ingest.py --path /path/to/doc.pdf --collection my_kb   # 摄取文档
+python main.py                                                         # 启动 MCP 服务器
+python scripts/start_dashboard.py                                      # 仪表盘 → http://localhost:8501
 ```
 
-## 🔌 可插拔组件
+### 可插拔组件
 
 | 组件 | 可选后端 | 配置项 |
 |:-----|:---------|:-------|
@@ -403,7 +307,7 @@ python scripts/start_dashboard.py    # → http://localhost:8501
 
 > 所有组件遵循 **Base(ABC) → Factory(Registry) → Provider** 模式。新增后端 = 继承基类 + 注册。
 
-## 📂 分支策略
+### 分支策略
 
 | 分支 | 用途 |
 |:-----|:-----|
@@ -411,7 +315,9 @@ python scripts/start_dashboard.py    # → http://localhost:8501
 | `dev` | 完整提交历史 — 记录项目从零搭建的全过程 |
 | `clean-start` | 仅骨架（Skills + DEV_SPEC）— fork 此分支从零开始自己实现 |
 
-> 📖 详细架构设计和任务排期请参阅 [DEV_SPEC.md](DEV_SPEC.md)
+</details>
+
+---
 
 ## 📄 License
 

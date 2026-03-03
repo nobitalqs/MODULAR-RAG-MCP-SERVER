@@ -103,7 +103,7 @@ class QueryKnowledgeHubTool:
 
     Example:
         >>> tool = QueryKnowledgeHubTool(settings)
-        >>> result = await tool.execute(query="Azure 配置", top_k=5)
+        >>> result = await tool.execute(query="Azure \u914d\u7f6e", top_k=5)
         >>> print(result.content)
     """
 
@@ -209,9 +209,9 @@ class QueryKnowledgeHubTool:
         - **Fully cached** (stateless, never go stale): embedding client,
           reranker, query processor, settings.
         - **Cached until collection changes**: vector store (ChromaDB
-          PersistentClient reads from SQLite — sees data written by other
+          PersistentClient reads from SQLite \u2014 sees data written by other
           processes), dense retriever, hybrid search.
-        - **Auto-refreshes on every query**: BM25 sparse index — the
+        - **Auto-refreshes on every query**: BM25 sparse index \u2014 the
           ``SparseRetriever._ensure_index_loaded()`` always reloads from
           disk, so the cached SparseRetriever object is fine.
 
@@ -366,28 +366,52 @@ class QueryKnowledgeHubTool:
                 trace.metadata["memory_turns"] = len(ctx.turns)
                 conversation_history = self._conversation_memory.to_messages(session_id)
 
-            # Phase J: Query rewriting
+            # Phase J: Query rewriting \u2192 multi-query retrieval
+            search_queries: list[str] = [search_query]
             if self._query_rewriter is not None:
                 try:
                     rewrite_result = self._query_rewriter.rewrite(
                         query, conversation_history=conversation_history,
                     )
-                    search_query = rewrite_result.rewritten_queries[0]
-                    if search_query != query:
-                        trace.metadata["rewritten_query"] = search_query[:200]
+                    search_queries = list(rewrite_result.rewritten_queries)
+                    if search_queries != [query]:
+                        trace.metadata["rewritten_queries"] = [
+                            q[:200] for q in search_queries
+                        ]
                 except Exception as exc:
                     logger.warning("Query rewriter failed, using original: %s", exc)
-                    search_query = query
+                    search_queries = [query]
 
-            # Perform hybrid search (blocking: embedding API + DB queries)
-            results = await asyncio.to_thread(
-                self._perform_search, search_query, effective_top_k, trace,
+            # Multi-query fan-out: parallel hybrid search per sub-query
+            per_query_results: list[list[RetrievalResult]] = list(
+                await asyncio.gather(
+                    *(
+                        asyncio.to_thread(
+                            self._perform_search, q, effective_top_k, trace,
+                        )
+                        for q in search_queries
+                    )
+                )
             )
 
+            # Cross-query RRF fusion when multiple sub-queries
+            if len(per_query_results) > 1:
+                from src.core.query_engine.fusion import RRFFusion
+
+                fusion = RRFFusion(k=60)
+                rerank_budget = effective_top_k * 2
+                results = fusion.fuse(per_query_results, top_k=rerank_budget)
+                trace.metadata["multi_query_counts"] = [
+                    len(r) for r in per_query_results
+                ]
+            else:
+                results = per_query_results[0] if per_query_results else []
+
             # Apply reranking if enabled (may call LLM API)
+            # Use original query for reranking \u2014 rank by user intent, not sub-queries
             if self.config.enable_rerank and results:
                 results = await asyncio.to_thread(
-                    self._apply_rerank, search_query, results, effective_top_k, trace,
+                    self._apply_rerank, query, results, effective_top_k, trace,
                 )
 
             # Build response
@@ -429,7 +453,7 @@ class QueryKnowledgeHubTool:
                 len(results), response.is_empty,
             )
 
-            # Collect trace (Phase F TraceCollector — optional)
+            # Collect trace (Phase F TraceCollector \u2014 optional)
             self._collect_trace(trace)
             return response
 
@@ -542,14 +566,14 @@ class QueryKnowledgeHubTool:
         Returns:
             MCPToolResponse indicating error.
         """
-        content = "## 查询失败\n\n"
-        content += f"查询: **{query}**\n"
-        content += f"集合: `{collection}`\n\n"
-        content += f"**错误信息:** {error_message}\n\n"
-        content += "请检查:\n"
-        content += "- 数据库连接是否正常\n"
-        content += "- 集合是否已创建并包含数据\n"
-        content += "- 配置文件是否正确\n"
+        content = "## \u67e5\u8be2\u5931\u8d25\n\n"
+        content += f"\u67e5\u8be2: **{query}**\n"
+        content += f"\u96c6\u5408: `{collection}`\n\n"
+        content += f"**\u9519\u8bef\u4fe1\u606f:** {error_message}\n\n"
+        content += "\u8bf7\u68c0\u67e5:\n"
+        content += "- \u6570\u636e\u5e93\u8fde\u63a5\u662f\u5426\u6b63\u5e38\n"
+        content += "- \u96c6\u5408\u662f\u5426\u5df2\u521b\u5efa\u5e76\u5305\u542b\u6570\u636e\n"
+        content += "- \u914d\u7f6e\u6587\u4ef6\u662f\u5426\u6b63\u786e\n"
 
         return MCPToolResponse(
             content=content,
@@ -626,7 +650,7 @@ async def query_knowledge_hub_handler(
             content=[
                 types.TextContent(
                     type="text",
-                    text=f"参数错误: {e}",
+                    text=f"\u53c2\u6570\u9519\u8bef: {e}",
                 )
             ],
             isError=True,
@@ -638,7 +662,7 @@ async def query_knowledge_hub_handler(
             content=[
                 types.TextContent(
                     type="text",
-                    text="内部错误: 查询处理失败",
+                    text="\u5185\u90e8\u9519\u8bef: \u67e5\u8be2\u5904\u7406\u5931\u8d25",
                 )
             ],
             isError=True,

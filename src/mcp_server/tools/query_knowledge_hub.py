@@ -161,28 +161,34 @@ class QueryKnowledgeHubTool:
         # Rate limiter
         if s.rate_limit is not None:
             from src.libs.rate_limiter.limiter_factory import RateLimiterFactory
+
             self._rate_limiter = RateLimiterFactory.create_from_settings(s.rate_limit)
 
         # Query rewriter
         if s.query_rewriting is not None:
             from src.libs.query_rewriter.rewriter_factory import QueryRewriterFactory
+
             llm = None
             if s.query_rewriting.enabled and s.query_rewriting.provider != "none":
                 from src.libs.llm.llm_factory import LLMFactory
+
                 llm = LLMFactory.create_llm(s)
             self._query_rewriter = QueryRewriterFactory.create_from_settings(
-                s.query_rewriting, llm=llm,
+                s.query_rewriting,
+                llm=llm,
             )
 
         # Conversation memory
         if s.memory is not None and s.memory.enabled:
             from src.libs.memory.memory_factory import MemoryFactory
             from src.libs.memory.conversation_memory import ConversationMemory
+
             redis_url = s.cache.redis_url if s.cache else None
             store = MemoryFactory.create_from_settings(s.memory, redis_url=redis_url)
             llm = None
             if s.memory.summarize_enabled:
                 from src.libs.llm.llm_factory import LLMFactory
+
                 llm = LLMFactory.create_llm(s)
             self._conversation_memory = ConversationMemory(
                 store=store,
@@ -195,12 +201,15 @@ class QueryKnowledgeHubTool:
         # Query router
         if s.query_routing is not None:
             from src.libs.query_router.router_factory import QueryRouterFactory
+
             llm = None
             if s.query_routing.enabled and s.query_routing.provider != "none":
                 from src.libs.llm.llm_factory import LLMFactory
+
                 llm = LLMFactory.create_llm(s)
             self._query_router = QueryRouterFactory.create_from_settings(
-                s.query_routing, llm=llm,
+                s.query_routing,
+                llm=llm,
             )
 
     def _ensure_initialized(self, collection: str) -> None:
@@ -274,9 +283,7 @@ class QueryKnowledgeHubTool:
             vector_store=vector_store,
         )
 
-        bm25_indexer = BM25Indexer(
-            index_dir=str(resolve_path("data/db/bm25"))
-        )
+        bm25_indexer = BM25Indexer(index_dir=str(resolve_path("data/db/bm25")))
         sparse_retriever = create_sparse_retriever(
             settings=self.settings,
             bm25_indexer=bm25_indexer,
@@ -322,16 +329,15 @@ class QueryKnowledgeHubTool:
             raise ValueError("Query cannot be empty")
 
         # Apply defaults
-        effective_top_k = min(
-            top_k or self.config.default_top_k,
-            self.config.max_top_k
-        )
+        effective_top_k = min(top_k or self.config.default_top_k, self.config.max_top_k)
         effective_collection = collection or self.config.default_collection
 
         logger.info(
-            "Executing query_knowledge_hub: query='%s...', "
-            "top_k=%d, collection=%s, session_id=%s",
-            query[:50], effective_top_k, effective_collection, session_id,
+            "Executing query_knowledge_hub: query='%s...', top_k=%d, collection=%s, session_id=%s",
+            query[:50],
+            effective_top_k,
+            effective_collection,
+            session_id,
         )
 
         trace = TraceContext(trace_type="query")
@@ -346,14 +352,19 @@ class QueryKnowledgeHubTool:
             # Initialize components for collection
             # Run blocking I/O in a thread to avoid blocking the async event loop
             import time as _time
+
             _init_t0 = _time.monotonic()
             await asyncio.to_thread(self._ensure_initialized, effective_collection)
             self._init_advanced_components()
             _init_elapsed = (_time.monotonic() - _init_t0) * 1000.0
-            trace.record_stage("initialization", {
-                "collection": effective_collection,
-                "cold_start": _init_elapsed > 500,
-            }, elapsed_ms=_init_elapsed)
+            trace.record_stage(
+                "initialization",
+                {
+                    "collection": effective_collection,
+                    "cold_start": _init_elapsed > 500,
+                },
+                elapsed_ms=_init_elapsed,
+            )
 
             # Phase J: Rate limiter acquire
             if self._rate_limiter is not None:
@@ -372,13 +383,12 @@ class QueryKnowledgeHubTool:
             if self._query_rewriter is not None:
                 try:
                     rewrite_result = self._query_rewriter.rewrite(
-                        query, conversation_history=conversation_history,
+                        query,
+                        conversation_history=conversation_history,
                     )
                     search_queries = list(rewrite_result.rewritten_queries)
                     if search_queries != [query]:
-                        trace.metadata["rewritten_queries"] = [
-                            q[:200] for q in search_queries
-                        ]
+                        trace.metadata["rewritten_queries"] = [q[:200] for q in search_queries]
                 except Exception as exc:
                     logger.warning("Query rewriter failed, using original: %s", exc)
                     search_queries = [query]
@@ -388,7 +398,10 @@ class QueryKnowledgeHubTool:
                 await asyncio.gather(
                     *(
                         asyncio.to_thread(
-                            self._perform_search, q, effective_top_k, trace,
+                            self._perform_search,
+                            q,
+                            effective_top_k,
+                            trace,
                         )
                         for q in search_queries
                     )
@@ -401,9 +414,7 @@ class QueryKnowledgeHubTool:
                 fusion = RRFFusion(k=rrf_k)
                 rerank_budget = effective_top_k * 2
                 results = fusion.fuse(per_query_results, top_k=rerank_budget)
-                trace.metadata["multi_query_counts"] = [
-                    len(r) for r in per_query_results
-                ]
+                trace.metadata["multi_query_counts"] = [len(r) for r in per_query_results]
             else:
                 results = per_query_results[0] if per_query_results else []
 
@@ -411,8 +422,36 @@ class QueryKnowledgeHubTool:
             # Use original query for reranking \u2014 rank by user intent, not sub-queries
             if self.config.enable_rerank and results:
                 results = await asyncio.to_thread(
-                    self._apply_rerank, query, results, effective_top_k, trace,
+                    self._apply_rerank,
+                    query,
+                    results,
+                    effective_top_k,
+                    trace,
                 )
+
+            # === Confidence-Based Adaptive Retrieval ===
+            adaptive = getattr(self.settings.retrieval, "adaptive", None)
+            if adaptive is not None and adaptive.enabled and self.config.enable_rerank and results:
+                for retry_i in range(adaptive.max_retries):
+                    if not self._should_retry(results, adaptive.score_threshold):
+                        break
+                    expanded_top_k = effective_top_k * (adaptive.expand_factor ** (retry_i + 1))
+                    trace.metadata["adaptive_retry"] = True
+                    trace.metadata["adaptive_reason"] = (
+                        f"top1_score={results[0].score:.2f} < threshold={adaptive.score_threshold}"
+                    )
+                    trace.metadata["adaptive_expanded_top_k"] = expanded_top_k
+                    logger.info(
+                        "Adaptive retrieval retry %d: expanding top_k to %d",
+                        retry_i + 1,
+                        expanded_top_k,
+                    )
+                    results = await self._adaptive_retry(
+                        query,
+                        search_queries,
+                        expanded_top_k,
+                        trace,
+                    )
 
             # Enforce top_k contract regardless of rerank setting
             results = results[:effective_top_k]
@@ -442,7 +481,9 @@ class QueryKnowledgeHubTool:
                     self._conversation_memory.add_turn(session_id, "user", query)
                     summary = response.content[:500] if response.content else ""
                     self._conversation_memory.add_turn(
-                        session_id, "assistant", summary,
+                        session_id,
+                        "assistant",
+                        summary,
                     )
                 except Exception as exc:
                     logger.warning("Memory add_turn failed: %s", exc)
@@ -453,7 +494,8 @@ class QueryKnowledgeHubTool:
 
             logger.info(
                 "query_knowledge_hub completed: %d results, is_empty=%s",
-                len(results), response.is_empty,
+                len(results),
+                response.is_empty,
             )
 
             # Collect trace (Phase F TraceCollector \u2014 optional)
@@ -475,6 +517,7 @@ class QueryKnowledgeHubTool:
         """
         try:
             from src.core.trace import TraceCollector
+
             TraceCollector().collect(trace)
         except (ImportError, AttributeError):
             trace.finish()
@@ -545,13 +588,86 @@ class QueryKnowledgeHubTool:
 
             if rerank_result.used_fallback:
                 logger.warning(
-                    "Reranker fallback: %s", rerank_result.fallback_reason,
+                    "Reranker fallback: %s",
+                    rerank_result.fallback_reason,
                 )
 
             return rerank_result.results
         except Exception as e:
             logger.warning("Reranking failed, using original order: %s", e)
             return results[:top_k]
+
+    def _should_retry(
+        self,
+        results: list[RetrievalResult],
+        threshold: float,
+    ) -> bool:
+        """Check if top-1 reranker score is below threshold.
+
+        Args:
+            results: Current retrieval results (sorted by score descending).
+            threshold: Minimum acceptable confidence score.
+
+        Returns:
+            True if retry should be triggered, False otherwise.
+        """
+        if not results:
+            return False
+        return results[0].score < threshold
+
+    async def _adaptive_retry(
+        self,
+        query: str,
+        search_queries: list[str],
+        expanded_top_k: int,
+        trace: TraceContext,
+    ) -> list[RetrievalResult]:
+        """Re-search with expanded top_k and re-rerank.
+
+        Args:
+            query: Original user query (for reranking).
+            search_queries: List of search sub-queries.
+            expanded_top_k: Expanded top_k for wider retrieval.
+            trace: TraceContext for observability.
+
+        Returns:
+            New list of RetrievalResult after re-search and re-rerank.
+        """
+        per_query_results: list[list[RetrievalResult]] = list(
+            await asyncio.gather(
+                *(
+                    asyncio.to_thread(
+                        self._perform_search,
+                        q,
+                        expanded_top_k,
+                        trace,
+                    )
+                    for q in search_queries
+                )
+            )
+        )
+
+        if len(per_query_results) > 1:
+            rrf_k = getattr(
+                getattr(self.settings, "retrieval", None),
+                "rrf_k",
+                60,
+            )
+            fusion = RRFFusion(k=rrf_k)
+            results = fusion.fuse(per_query_results, top_k=expanded_top_k)
+        else:
+            results = per_query_results[0] if per_query_results else []
+
+        if self.config.enable_rerank and results:
+            results = await asyncio.to_thread(
+                self._apply_rerank,
+                query,
+                results,
+                expanded_top_k,
+                trace,
+            )
+
+        return results
 
     def _build_error_response(
         self,

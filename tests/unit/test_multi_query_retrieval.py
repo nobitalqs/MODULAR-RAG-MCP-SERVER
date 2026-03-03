@@ -168,9 +168,17 @@ class TestMultiQueryFanOut:
 
         response = await tool.execute(query="test")
 
-        # Verify response with deduplicated results
-        assert response is not None
-        assert not response.is_empty  # has results
+        chunk_ids = [c.chunk_id for c in response.citations]
+
+        # Dedup: chunk "b" appears in both q1 and q2 but should appear once
+        assert chunk_ids.count("b") == 1
+
+        # RRF boost: "b" hit by both sub-queries, highest RRF score → rank first
+        # RRF scores (k=60): b ≈ 0.0325, a ≈ 0.0164, c ≈ 0.0161
+        assert chunk_ids[0] == "b"
+
+        # Completeness: all unique chunks from both sub-queries are present
+        assert set(chunk_ids) == {"a", "b", "c"}
 
     @pytest.mark.asyncio
     async def test_trace_records_multi_query_metadata(self):

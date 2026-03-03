@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import threading
 import time
 
 import pytest
@@ -251,3 +252,37 @@ class TestTraceCollector:
         collector = TraceCollector(traces_path=p)
         assert collector.path == p
         assert p.parent.exists()
+
+
+# ── Thread safety ──────────────────────────────────────────────────
+
+
+class TestTraceContextThreadSafety:
+    """Concurrent record_stage calls must not lose data."""
+
+    def test_concurrent_record_stage_no_data_loss(self) -> None:
+        tc = TraceContext()
+        num_threads = 10
+        records_per_thread = 100
+        barrier = threading.Barrier(num_threads)
+
+        def worker(thread_id: int) -> None:
+            barrier.wait()
+            for i in range(records_per_thread):
+                tc.record_stage(
+                    f"t{thread_id}_s{i}",
+                    {"thread": thread_id, "iter": i},
+                    elapsed_ms=float(i),
+                )
+
+        threads = [
+            threading.Thread(target=worker, args=(t,))
+            for t in range(num_threads)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(tc.stages) == num_threads * records_per_thread
+        assert len(tc._stage_timings) == num_threads * records_per_thread

@@ -6,6 +6,7 @@ finish() lifecycle, and to_dict() serialisation for JSON Lines output.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ class TraceContext:
     _start_mono: float = field(default_factory=time.monotonic, repr=False)
     _finish_mono: float | None = field(default=None, repr=False)
     _stage_timings: dict[str, float] = field(default_factory=dict, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     # ── recording ─────────────────────────────────────────────────────
 
@@ -62,8 +64,10 @@ class TraceContext:
         }
         if elapsed_ms is not None:
             entry["elapsed_ms"] = round(elapsed_ms, 2)
-            self._stage_timings[stage_name] = elapsed_ms
-        self.stages.append(entry)
+        with self._lock:
+            if elapsed_ms is not None:
+                self._stage_timings[stage_name] = elapsed_ms
+            self.stages.append(entry)
 
     # ── lifecycle ─────────────────────────────────────────────────────
 

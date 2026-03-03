@@ -37,6 +37,10 @@ class RedisCache(BaseCache):
 
     def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         effective_ttl = ttl if ttl is not None else self._default_ttl
+        if effective_ttl <= 0:
+            # Redis SETEX rejects non-positive TTL; treat as immediate expiry
+            self._client.delete(key)
+            return
         self._client.setex(key, effective_ttl, pickle.dumps(value))
 
     def delete(self, key: str) -> bool:

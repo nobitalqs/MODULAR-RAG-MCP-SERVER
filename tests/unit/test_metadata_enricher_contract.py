@@ -421,7 +421,7 @@ class TestConfiguration:
 
     def test_lazy_llm_initialization(self, mock_settings_llm_enabled):
         """Should initialize LLM lazily when first accessed."""
-        with patch('src.ingestion.transform.metadata_enricher.LLMFactory.create') as mock_create:
+        with patch('src.ingestion.transform.metadata_enricher.LLMFactory.create_llm') as mock_create:
             mock_llm = Mock()
             mock_create.return_value = mock_llm
 
@@ -438,7 +438,7 @@ class TestConfiguration:
 
     def test_llm_init_failure_disables_llm(self, mock_settings_llm_enabled):
         """Should disable LLM on initialization failure."""
-        with patch('src.ingestion.transform.metadata_enricher.LLMFactory.create') as mock_create:
+        with patch('src.ingestion.transform.metadata_enricher.LLMFactory.create_llm') as mock_create:
             mock_create.side_effect = Exception("Init failed")
 
             enricher = MetadataEnricher(mock_settings_llm_enabled)

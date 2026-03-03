@@ -194,8 +194,8 @@ class RagasEvaluator(BaseEvaluator):
     def _build_wrappers(self) -> tuple:
         """Build Ragas LLM and Embedding wrappers from project settings.
 
-        Uses Ragas 0.4+ native API (llm_factory + OpenAIEmbeddings)
-        instead of deprecated LangchainLLMWrapper.
+        Priority: evaluation.llm/embedding (dedicated) > settings.llm/embedding (global).
+        This allows the main pipeline to use Ollama while Ragas uses OpenAI.
 
         Returns:
             Tuple of (llm_wrapper, embeddings_wrapper).
@@ -210,45 +210,70 @@ class RagasEvaluator(BaseEvaluator):
         if self.settings is None:
             raise ValueError("Settings required to create LLM for Ragas evaluation")
 
-        # -- LLM --
-        llm_cfg = self.settings.llm
-        provider = llm_cfg.provider.lower()
+        eval_cfg = self.settings.evaluation
+
+        # -- LLM: prefer evaluation.llm, fallback to global llm --
+        if eval_cfg.llm is not None:
+            provider = eval_cfg.llm.provider.lower()
+            model = eval_cfg.llm.model
+            api_key = eval_cfg.llm.api_key
+            azure_endpoint = eval_cfg.llm.azure_endpoint
+            api_version = eval_cfg.llm.api_version
+        else:
+            provider = self.settings.llm.provider.lower()
+            model = self.settings.llm.model
+            api_key = self.settings.llm.api_key
+            azure_endpoint = self.settings.llm.azure_endpoint
+            api_version = self.settings.llm.api_version
 
         if provider == "azure":
             llm_client = AsyncAzureOpenAI(
-                api_key=llm_cfg.api_key,
-                azure_endpoint=llm_cfg.azure_endpoint,
-                api_version=llm_cfg.api_version or "2024-02-15-preview",
+                api_key=api_key,
+                azure_endpoint=azure_endpoint,
+                api_version=api_version or "2024-02-15-preview",
             )
         elif provider == "openai":
-            llm_client = AsyncOpenAI(api_key=llm_cfg.api_key)
+            llm_client = AsyncOpenAI(api_key=api_key)
         else:
             raise ValueError(
                 f"Unsupported LLM provider for Ragas: '{provider}'. "
-                "Supported: azure, openai"
+                "Supported: azure, openai. "
+                "Tip: add evaluation.llm section in settings.yaml to use a "
+                "dedicated provider for evaluation."
             )
 
-        llm = llm_factory(llm_cfg.model, client=llm_client, max_tokens=8192)
+        llm = llm_factory(model, client=llm_client, max_tokens=8192)
 
-        # -- Embeddings --
-        emb_cfg = self.settings.embedding
-        emb_provider = emb_cfg.provider.lower()
+        # -- Embeddings: prefer evaluation.embedding, fallback to global --
+        if eval_cfg.embedding is not None:
+            emb_provider = eval_cfg.embedding.provider.lower()
+            emb_model = eval_cfg.embedding.model
+            emb_api_key = eval_cfg.embedding.api_key
+            emb_azure_endpoint = eval_cfg.embedding.azure_endpoint
+            emb_api_version = eval_cfg.embedding.api_version
+        else:
+            emb_provider = self.settings.embedding.provider.lower()
+            emb_model = self.settings.embedding.model
+            emb_api_key = self.settings.embedding.api_key
+            emb_azure_endpoint = self.settings.embedding.azure_endpoint
+            emb_api_version = self.settings.embedding.api_version
 
         if emb_provider == "azure":
             emb_client = AsyncAzureOpenAI(
-                api_key=emb_cfg.api_key,
-                azure_endpoint=emb_cfg.azure_endpoint,
-                api_version=emb_cfg.api_version or "2024-02-15-preview",
+                api_key=emb_api_key,
+                azure_endpoint=emb_azure_endpoint,
+                api_version=emb_api_version or "2024-02-15-preview",
             )
         elif emb_provider == "openai":
-            emb_client = AsyncOpenAI(api_key=emb_cfg.api_key)
+            emb_client = AsyncOpenAI(api_key=emb_api_key)
         else:
             raise ValueError(
                 f"Unsupported embedding provider for Ragas: '{emb_provider}'. "
-                "Supported: azure, openai"
+                "Supported: azure, openai. "
+                "Tip: add evaluation.embedding section in settings.yaml."
             )
 
-        embeddings = OpenAIEmbeddings(model=emb_cfg.model, client=emb_client)
+        embeddings = OpenAIEmbeddings(model=emb_model, client=emb_client)
 
         return llm, embeddings
 

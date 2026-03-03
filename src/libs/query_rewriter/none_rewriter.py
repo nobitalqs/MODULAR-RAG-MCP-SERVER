@@ -22,7 +22,7 @@ class NoneRewriter(BaseQueryRewriter):
     ) -> RewriteResult:
         return RewriteResult(
             original_query=query,
-            rewritten_queries=[query],
+            rewritten_queries=(query,),
             reasoning=None,
             strategy="none",
         )

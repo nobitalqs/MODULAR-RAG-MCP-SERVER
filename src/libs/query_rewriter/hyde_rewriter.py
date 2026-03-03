@@ -58,7 +58,7 @@ class HyDERewriter(BaseQueryRewriter):
 
             return RewriteResult(
                 original_query=query,
-                rewritten_queries=[hypothetical_doc],
+                rewritten_queries=(hypothetical_doc,),
                 reasoning="Generated hypothetical answer document for semantic search",
                 strategy="hyde",
             )
@@ -70,7 +70,7 @@ class HyDERewriter(BaseQueryRewriter):
     def _fallback(query: str) -> RewriteResult:
         return RewriteResult(
             original_query=query,
-            rewritten_queries=[query],
+            rewritten_queries=(query,),
             reasoning=None,
             strategy="hyde",
         )

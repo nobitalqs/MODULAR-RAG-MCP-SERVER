@@ -60,7 +60,7 @@ class TestRewriterContract:
     def test_rewrite_result_has_non_empty_rewritten_queries(self, factory):
         rewriter = factory()
         result = rewriter.rewrite("test query about Python")
-        assert isinstance(result.rewritten_queries, list)
+        assert isinstance(result.rewritten_queries, tuple)
         assert len(result.rewritten_queries) >= 1
 
     def test_rewrite_result_has_strategy(self, factory):

@@ -67,7 +67,7 @@ class MetadataEnricher(BaseTransform):
         """Lazy-load LLM via factory on first access."""
         if self.use_llm and self._llm is None:
             try:
-                self._llm = LLMFactory.create(self.settings)
+                self._llm = LLMFactory.create_llm(self.settings)
                 logger.info("LLM initialised for metadata enrichment")
             except Exception:
                 logger.warning("Failed to initialise LLM; falling back to rule-based", exc_info=True)

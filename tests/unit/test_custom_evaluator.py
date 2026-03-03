@@ -444,3 +444,103 @@ class TestEvaluatorFactory:
         assert "custom" in providers
         assert "ragas" in providers
         assert "composite" in providers
+
+    def test_duplicate_registration_overwrites(self) -> None:
+        """Registering same name twice overwrites the previous provider."""
+        self.factory.register_provider("test", NoneEvaluator)
+
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        self.factory.register_provider("test", CustomEvaluator)
+        evaluator = self.factory.create_by_name("test")
+        assert isinstance(evaluator, CustomEvaluator)
+
+
+# ===========================================================================
+# Boundary tests — evaluator edge cases
+# ===========================================================================
+
+
+class TestCustomEvaluatorBoundary:
+    """Boundary tests for CustomEvaluator edge cases."""
+
+    def test_empty_ground_truth_list(self) -> None:
+        """Empty ground_truth list returns 0 scores."""
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        evaluator = CustomEvaluator()
+        result = evaluator.evaluate(
+            "query", [{"id": "a"}], ground_truth=[],
+        )
+        assert result["hit_rate"] == 0.0
+        assert result["mrr"] == 0.0
+
+    def test_generated_answer_ignored(self) -> None:
+        """CustomEvaluator ignores generated_answer (not LLM-as-Judge)."""
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        evaluator = CustomEvaluator()
+        result = evaluator.evaluate(
+            "query",
+            [{"id": "a"}],
+            ground_truth=["a"],
+            generated_answer="this is ignored",
+        )
+        assert result["hit_rate"] == 1.0
+
+    def test_large_candidate_list(self) -> None:
+        """Evaluate with many candidates."""
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        evaluator = CustomEvaluator()
+        chunks = [{"id": f"c{i}"} for i in range(100)]
+        result = evaluator.evaluate(
+            "query", chunks, ground_truth=["c50"],
+        )
+        assert result["hit_rate"] == 1.0
+        assert result["mrr"] == pytest.approx(1.0 / 51.0)
+
+    def test_unicode_query_in_evaluator(self) -> None:
+        """Chinese query is valid for evaluation."""
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        evaluator = CustomEvaluator()
+        result = evaluator.evaluate(
+            "什么是混合检索？",
+            [{"id": "a"}],
+            ground_truth=["a"],
+        )
+        assert result["hit_rate"] == 1.0
+
+    def test_dict_ground_truth_missing_ids_key(self) -> None:
+        """Dict ground_truth without 'ids' key raises ValueError."""
+        from src.libs.evaluator.custom_evaluator import CustomEvaluator
+
+        evaluator = CustomEvaluator()
+        with pytest.raises(ValueError, match="Missing id field"):
+            evaluator.evaluate(
+                "query", [{"id": "a"}], ground_truth={"labels": ["a"]},
+            )
+
+
+class TestNoneEvaluatorBoundary:
+    """Boundary tests for NoneEvaluator edge cases."""
+
+    def test_accepts_all_optional_params(self) -> None:
+        """NoneEvaluator accepts all optional params without error."""
+        evaluator = NoneEvaluator()
+        result = evaluator.evaluate(
+            "query",
+            [{"id": "a"}],
+            generated_answer="answer",
+            ground_truth=["a"],
+            trace=None,
+            extra_param="ignored",
+        )
+        assert result == {}
+
+    def test_single_chunk(self) -> None:
+        """NoneEvaluator works with single chunk."""
+        evaluator = NoneEvaluator()
+        result = evaluator.evaluate("query", [{"id": "a"}])
+        assert result == {}

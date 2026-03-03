@@ -59,9 +59,9 @@ ENV/
 env.bak/
 venv.bak/
 
-# IDE
-.idea/
-.vscode/
+# IDE (match both files and directories)
+.idea
+.vscode
 *.swp
 *.swo
 *~
@@ -91,6 +91,41 @@ data/
 logs/
 *.log
 traces.jsonl
+config/settings.yaml
+
+# Development docs (local only)
+CLAUDE.md
+DEV_SPEC.md
+findings.md
+docs/
+
+# Personal dotfiles (should never be in project repo)
+.bash_profile
+.bashrc
+.profile
+.zprofile
+.zshrc
+.gitconfig
+.ripgreprc
+
+# Claude Code local settings (keep skills/, ignore the rest)
+.claude/agents
+.claude/commands
+.claude/settings.json
+.claude/memory/
+
+# MCP local config
+.mcp.json
+.gitmodules
+
+# Accidentally committed git-internal-named empty files
+HEAD
+objects
+refs
+hooks
+
+# Large test PDFs (use git-lfs or download separately)
+tests/fixtures/sample_documents/*.pdf
 
 # Secrets
 .env.local

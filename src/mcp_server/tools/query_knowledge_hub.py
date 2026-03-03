@@ -168,7 +168,7 @@ class QueryKnowledgeHubTool:
             llm = None
             if s.query_rewriting.enabled and s.query_rewriting.provider != "none":
                 from src.libs.llm.llm_factory import LLMFactory
-                llm = LLMFactory.create(s)
+                llm = LLMFactory.create_llm(s)
             self._query_rewriter = QueryRewriterFactory.create_from_settings(
                 s.query_rewriting, llm=llm,
             )
@@ -177,11 +177,12 @@ class QueryKnowledgeHubTool:
         if s.memory is not None and s.memory.enabled:
             from src.libs.memory.memory_factory import MemoryFactory
             from src.libs.memory.conversation_memory import ConversationMemory
-            store = MemoryFactory.create_from_settings(s.memory)
+            redis_url = s.cache.redis_url if s.cache else None
+            store = MemoryFactory.create_from_settings(s.memory, redis_url=redis_url)
             llm = None
             if s.memory.summarize_enabled:
                 from src.libs.llm.llm_factory import LLMFactory
-                llm = LLMFactory.create(s)
+                llm = LLMFactory.create_llm(s)
             self._conversation_memory = ConversationMemory(
                 store=store,
                 max_turns=s.memory.max_turns,
@@ -196,7 +197,7 @@ class QueryKnowledgeHubTool:
             llm = None
             if s.query_routing.enabled and s.query_routing.provider != "none":
                 from src.libs.llm.llm_factory import LLMFactory
-                llm = LLMFactory.create(s)
+                llm = LLMFactory.create_llm(s)
             self._query_router = QueryRouterFactory.create_from_settings(
                 s.query_routing, llm=llm,
             )
@@ -241,14 +242,28 @@ class QueryKnowledgeHubTool:
 
         # === Fully cached components (stateless, never go stale) ===
         if self._embedding_client is None:
-            self._embedding_client = EmbeddingFactory.create(self.settings)
+            from src.libs.embedding import AzureEmbedding, OllamaEmbedding, OpenAIEmbedding
+
+            emb_factory = EmbeddingFactory()
+            emb_factory.register_provider("openai", OpenAIEmbedding)
+            emb_factory.register_provider("azure", AzureEmbedding)
+            emb_factory.register_provider("ollama", OllamaEmbedding)
+            self._embedding_client = emb_factory.create_from_settings(
+                self.settings.embedding,
+            )
 
         if self._reranker is None:
             self._reranker = create_core_reranker(settings=self.settings)
 
         # === Rebuild for new collection ===
-        vector_store = VectorStoreFactory.create(
-            self.settings,
+        from src.libs.vector_store import ChromaStore
+
+        vs_factory = VectorStoreFactory()
+        vs_factory.register_provider("chroma", ChromaStore)
+        # Use settings defaults but allow collection override
+        vector_store = vs_factory.create(
+            self.settings.vector_store.provider,
+            persist_directory=self.settings.vector_store.persist_directory,
             collection_name=collection,
         )
 
@@ -345,14 +360,19 @@ class QueryKnowledgeHubTool:
 
             # Phase J: Get conversation context
             search_query = query
+            conversation_history = None
             if session_id and self._conversation_memory is not None:
                 ctx = self._conversation_memory.get_context(session_id)
                 trace.metadata["memory_turns"] = len(ctx.turns)
+                conversation_history = self._conversation_memory.to_messages(session_id)
 
             # Phase J: Query rewriting
             if self._query_rewriter is not None:
                 try:
-                    search_query = self._query_rewriter.rewrite(query)
+                    rewrite_result = self._query_rewriter.rewrite(
+                        query, conversation_history=conversation_history,
+                    )
+                    search_query = rewrite_result.rewritten_queries[0]
                     if search_query != query:
                         trace.metadata["rewritten_query"] = search_query[:200]
                 except Exception as exc:

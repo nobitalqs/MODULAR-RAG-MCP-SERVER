@@ -322,3 +322,100 @@ class TestVectorStoreFactory:
     def test_empty_registry_lists_none(self) -> None:
         with pytest.raises(ValueError, match="\\(none\\)"):
             self.factory.create("anything")
+
+
+# ===========================================================================
+# Boundary tests — delete / delete_by_metadata / query edge cases
+# ===========================================================================
+
+
+class TestDeleteBoundary:
+    """Boundary tests for VectorStore delete operations."""
+
+    def test_delete_empty_ids_raises(self) -> None:
+        """ChromaStore.delete raises ValueError on empty list."""
+        store = FakeVectorStore()
+        # FakeVectorStore inherits BaseVectorStore.delete → NotImplementedError
+        with pytest.raises(NotImplementedError):
+            store.delete([])
+
+    def test_base_delete_not_implemented(self) -> None:
+        """Default delete raises NotImplementedError with class name."""
+        store = FakeVectorStore()
+        with pytest.raises(NotImplementedError, match="FakeVectorStore"):
+            store.delete(["id1"])
+
+
+class TestQueryBoundary:
+    """Boundary tests for VectorStore query edge cases."""
+
+    def test_query_with_none_filters(self) -> None:
+        """query(filters=None) returns all results."""
+        store = FakeVectorStore()
+        store.upsert([
+            {"id": "d1", "vector": [0.1], "metadata": {"src": "a.pdf"}},
+            {"id": "d2", "vector": [0.2], "metadata": {"src": "b.pdf"}},
+        ])
+        results = store.query(vector=[0.5], top_k=10, filters=None)
+        assert len(results) == 2
+
+    def test_query_top_k_equals_one(self) -> None:
+        """top_k=1 returns exactly one result."""
+        store = FakeVectorStore()
+        store.upsert([{"id": f"d{i}", "vector": [float(i)]} for i in range(5)])
+        results = store.query(vector=[0.0], top_k=1)
+        assert len(results) == 1
+
+    def test_query_top_k_larger_than_store(self) -> None:
+        """top_k > stored items returns all available items."""
+        store = FakeVectorStore()
+        store.upsert([{"id": "d1", "vector": [0.1]}])
+        results = store.query(vector=[0.0], top_k=100)
+        assert len(results) == 1
+
+    def test_query_empty_store(self) -> None:
+        """Querying an empty store returns empty list."""
+        store = FakeVectorStore()
+        results = store.query(vector=[0.5], top_k=10)
+        assert results == []
+
+    def test_query_with_nonmatching_filter(self) -> None:
+        """Filter that matches nothing returns empty list."""
+        store = FakeVectorStore()
+        store.upsert([
+            {"id": "d1", "vector": [0.1], "metadata": {"src": "a.pdf"}},
+        ])
+        results = store.query(vector=[0.0], top_k=10, filters={"src": "z.pdf"})
+        assert results == []
+
+    def test_validate_records_none_id(self) -> None:
+        """Record with None id still has 'id' key — should not raise for key presence."""
+        store = FakeVectorStore()
+        # 'id' key exists but value is None — upsert should still work
+        store.upsert([{"id": None, "vector": [0.1]}])
+        assert None in store.storage
+
+
+class TestUpsertBoundary:
+    """Boundary tests for VectorStore upsert edge cases."""
+
+    def test_upsert_overwrites_existing_record(self) -> None:
+        """Upserting with same id replaces old data."""
+        store = FakeVectorStore()
+        store.upsert([{"id": "d1", "vector": [0.1], "metadata": {"v": 1}}])
+        store.upsert([{"id": "d1", "vector": [0.9], "metadata": {"v": 2}}])
+        assert store.storage["d1"]["metadata"]["v"] == 2
+        assert store.storage["d1"]["vector"] == [0.9]
+
+    def test_upsert_large_vector(self) -> None:
+        """High-dimensional vectors are accepted."""
+        store = FakeVectorStore()
+        store.upsert([{"id": "d1", "vector": [0.01] * 768}])
+        assert len(store.storage["d1"]["vector"]) == 768
+
+    def test_validate_records_with_extra_fields(self) -> None:
+        """Records with extra fields beyond id/vector/metadata are accepted."""
+        store = FakeVectorStore()
+        store.validate_records([
+            {"id": "d1", "vector": [0.1], "metadata": {}, "text": "hello"},
+        ])

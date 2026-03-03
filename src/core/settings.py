@@ -244,10 +244,32 @@ class RerankSettings:
 
 
 @dataclass(frozen=True)
+class EvaluationLLMSettings:
+    """Dedicated LLM config for evaluation (Ragas uses LLM-as-Judge)."""
+    provider: str               # "openai" | "azure"
+    model: str
+    api_key: str | None = None
+    azure_endpoint: str | None = None
+    api_version: str | None = None
+
+
+@dataclass(frozen=True)
+class EvaluationEmbeddingSettings:
+    """Dedicated embedding config for evaluation."""
+    provider: str               # "openai" | "azure"
+    model: str
+    api_key: str | None = None
+    azure_endpoint: str | None = None
+    api_version: str | None = None
+
+
+@dataclass(frozen=True)
 class EvaluationSettings:
     enabled: bool
     provider: str
     metrics: list[str]
+    llm: EvaluationLLMSettings | None = None
+    embedding: EvaluationEmbeddingSettings | None = None
 
 
 @dataclass(frozen=True)
@@ -540,11 +562,7 @@ class Settings:
                 deployment_name=rerank.get("deployment_name"),
                 api_version=rerank.get("api_version"),
             ),
-            evaluation=EvaluationSettings(
-                enabled=_require_bool(evaluation, "enabled", "evaluation"),
-                provider=_require_str(evaluation, "provider", "evaluation"),
-                metrics=[str(item) for item in _require_list(evaluation, "metrics", "evaluation")],
-            ),
+            evaluation=_parse_evaluation(evaluation),
             observability=ObservabilitySettings(
                 log_level=_require_str(observability, "log_level", "observability"),
                 trace_enabled=_require_bool(observability, "trace_enabled", "observability"),
@@ -562,6 +580,41 @@ class Settings:
             memory=memory_settings,
             query_routing=query_routing_settings,
         )
+
+
+def _parse_evaluation(evaluation: dict[str, Any]) -> EvaluationSettings:
+    """Parse evaluation section, including optional llm/embedding sub-configs."""
+    eval_llm = None
+    if "llm" in evaluation:
+        el = _require_mapping(evaluation, "llm", "evaluation")
+        el_provider = _require_str(el, "provider", "evaluation.llm")
+        eval_llm = EvaluationLLMSettings(
+            provider=el_provider,
+            model=_require_str(el, "model", "evaluation.llm"),
+            api_key=_resolve_api_key(el, el_provider),
+            azure_endpoint=_resolve_azure_endpoint(el, el_provider),
+            api_version=el.get("api_version"),
+        )
+
+    eval_emb = None
+    if "embedding" in evaluation:
+        ee = _require_mapping(evaluation, "embedding", "evaluation")
+        ee_provider = _require_str(ee, "provider", "evaluation.embedding")
+        eval_emb = EvaluationEmbeddingSettings(
+            provider=ee_provider,
+            model=_require_str(ee, "model", "evaluation.embedding"),
+            api_key=_resolve_api_key(ee, ee_provider),
+            azure_endpoint=_resolve_azure_endpoint(ee, ee_provider),
+            api_version=ee.get("api_version"),
+        )
+
+    return EvaluationSettings(
+        enabled=_require_bool(evaluation, "enabled", "evaluation"),
+        provider=_require_str(evaluation, "provider", "evaluation"),
+        metrics=[str(item) for item in _require_list(evaluation, "metrics", "evaluation")],
+        llm=eval_llm,
+        embedding=eval_emb,
+    )
 
 
 def validate_settings(settings: Settings) -> None:

@@ -68,7 +68,7 @@ class TestLLMRewriterExpandsQuery:
         result = rewriter.rewrite("ML basics")
 
         # Falls back to original query
-        assert result.rewritten_queries == ["ML basics"]
+        assert result.rewritten_queries == ("ML basics",)
         assert result.strategy == "llm"
 
     def test_rewriter_with_conversation_history(self):

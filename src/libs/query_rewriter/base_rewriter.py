@@ -19,7 +19,7 @@ class RewriteResult:
     """
 
     original_query: str
-    rewritten_queries: list[str]
+    rewritten_queries: tuple[str, ...]
     reasoning: str | None
     strategy: str
 

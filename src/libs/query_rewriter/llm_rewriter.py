@@ -61,7 +61,7 @@ class LLMRewriter(BaseQueryRewriter):
             logger.warning("LLMRewriter failed, falling back to original: %s", exc)
             return RewriteResult(
                 original_query=query,
-                rewritten_queries=[query],
+                rewritten_queries=(query,),
                 reasoning=None,
                 strategy="llm",
             )
@@ -95,7 +95,7 @@ class LLMRewriter(BaseQueryRewriter):
             logger.warning("LLM returned invalid JSON, falling back to original")
             return RewriteResult(
                 original_query=original_query,
-                rewritten_queries=[original_query],
+                rewritten_queries=(original_query,),
                 reasoning=None,
                 strategy="llm",
             )
@@ -104,7 +104,7 @@ class LLMRewriter(BaseQueryRewriter):
         if not queries or not isinstance(queries, list):
             return RewriteResult(
                 original_query=original_query,
-                rewritten_queries=[original_query],
+                rewritten_queries=(original_query,),
                 reasoning=data.get("reasoning"),
                 strategy="llm",
             )
@@ -114,7 +114,7 @@ class LLMRewriter(BaseQueryRewriter):
 
         return RewriteResult(
             original_query=original_query,
-            rewritten_queries=queries,
+            rewritten_queries=tuple(queries),
             reasoning=data.get("reasoning"),
             strategy="llm",
         )

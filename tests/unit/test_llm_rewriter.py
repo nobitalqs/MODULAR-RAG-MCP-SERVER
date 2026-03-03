@@ -34,9 +34,9 @@ class TestLLMRewriterSingleRewrite:
 
         assert isinstance(result, RewriteResult)
         assert result.original_query == "What is RAG?"
-        assert result.rewritten_queries == [
+        assert result.rewritten_queries == (
             "What is retrieval-augmented generation?",
-        ]
+        )
         assert result.reasoning == "Expanded abbreviation"
         assert result.strategy == "llm"
         mock_llm.chat.assert_called_once()
@@ -90,9 +90,9 @@ class TestLLMRewriterWithHistory:
         rewriter = LLMRewriter(llm=mock_llm, max_rewrites=3)
         result = rewriter.rewrite("How does it handle attention?", conversation_history=history)
 
-        assert result.rewritten_queries == [
+        assert result.rewritten_queries == (
             "What is the attention mechanism in transformers?",
-        ]
+        )
         # Verify the prompt included history context
         call_args = mock_llm.chat.call_args
         messages = call_args[0][0]
@@ -108,14 +108,14 @@ class TestLLMRewriterErrorHandling:
         )
         rewriter = LLMRewriter(llm=mock_llm, max_rewrites=3)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)
         assert result.strategy == "llm"
 
     def test_llm_exception_falls_back_to_original(self, mock_llm):
         mock_llm.chat.side_effect = RuntimeError("LLM unavailable")
         rewriter = LLMRewriter(llm=mock_llm, max_rewrites=3)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)
 
     def test_missing_queries_key_falls_back(self, mock_llm):
         mock_llm.chat.return_value = ChatResponse(
@@ -124,7 +124,7 @@ class TestLLMRewriterErrorHandling:
         )
         rewriter = LLMRewriter(llm=mock_llm, max_rewrites=3)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)
 
     def test_empty_queries_list_falls_back(self, mock_llm):
         mock_llm.chat.return_value = ChatResponse(
@@ -133,4 +133,4 @@ class TestLLMRewriterErrorHandling:
         )
         rewriter = LLMRewriter(llm=mock_llm, max_rewrites=3)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)

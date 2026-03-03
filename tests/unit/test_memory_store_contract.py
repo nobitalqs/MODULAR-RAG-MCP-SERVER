@@ -31,7 +31,7 @@ class TestMemoryStoreContract:
 
     def test_get_turns_empty_for_new_session(self, factory):
         store = factory()
-        assert store.get_turns("sess-new") == []
+        assert store.get_turns("sess-new") == ()
 
     def test_add_turn_and_retrieve(self, factory):
         store = factory()
@@ -65,7 +65,7 @@ class TestMemoryStoreContract:
         store.add_turn("sess-1", ConversationTurn(role="user", content="Hi"))
         store.set_summary("sess-1", "Summary")
         store.clear("sess-1")
-        assert store.get_turns("sess-1") == []
+        assert store.get_turns("sess-1") == ()
         assert store.get_summary("sess-1") is None
 
     def test_get_context_returns_session_context(self, factory):

@@ -71,7 +71,7 @@ class TestRedisMemoryStoreGetTurns:
 
     def test_get_turns_missing_returns_empty(self, store, mock_redis):
         mock_redis.hget.return_value = None
-        assert store.get_turns("nonexistent") == []
+        assert store.get_turns("nonexistent") == ()
 
 
 class TestRedisMemoryStoreSummary:
@@ -112,5 +112,5 @@ class TestRedisMemoryStoreGetContext:
     def test_get_context_empty(self, store, mock_redis):
         mock_redis.hget.return_value = None
         ctx = store.get_context("s1")
-        assert ctx.turns == []
+        assert ctx.turns == ()
         assert ctx.summary is None

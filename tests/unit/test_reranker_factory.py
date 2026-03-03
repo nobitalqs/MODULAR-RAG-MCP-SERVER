@@ -263,3 +263,56 @@ class TestRerankerFactory:
     def test_empty_registry_lists_none(self) -> None:
         with pytest.raises(ValueError, match="\\(none\\)"):
             self.factory.create("anything")
+
+    def test_duplicate_registration_overwrites(self) -> None:
+        """Registering same name twice overwrites the previous provider."""
+        self.factory.register_provider("fake", FakeReranker)
+        self.factory.register_provider("fake", NoneReranker)
+        reranker = self.factory.create("fake")
+        assert isinstance(reranker, NoneReranker)
+
+
+# ===========================================================================
+# Boundary tests — reranker edge cases
+# ===========================================================================
+
+
+class TestRerankerBoundary:
+    """Boundary tests for reranker edge cases."""
+
+    def test_single_candidate_preserved(self) -> None:
+        """Reranking a single candidate returns it unchanged."""
+        reranker = NoneReranker()
+        result = reranker.rerank("query", [{"id": "only"}])
+        assert len(result) == 1
+        assert result[0]["id"] == "only"
+
+    def test_candidates_with_varying_fields(self) -> None:
+        """Candidates can have different metadata shapes."""
+        reranker = NoneReranker()
+        candidates = [
+            {"id": "a", "score": 0.9, "text": "hello"},
+            {"id": "b"},
+            {"id": "c", "metadata": {"src": "x.pdf"}},
+        ]
+        result = reranker.rerank("query", candidates)
+        assert len(result) == 3
+        assert [r["id"] for r in result] == ["a", "b", "c"]
+
+    def test_fake_reranker_single_candidate(self) -> None:
+        """FakeReranker reversing single candidate returns same."""
+        reranker = FakeReranker()
+        result = reranker.rerank("query", [{"id": "only"}])
+        assert result == [{"id": "only"}]
+
+    def test_unicode_query_accepted(self) -> None:
+        """Unicode queries are valid."""
+        reranker = NoneReranker()
+        result = reranker.rerank("什么是 RAG？", [{"id": "a"}])
+        assert len(result) == 1
+
+    def test_validate_candidates_non_list_type(self) -> None:
+        """Tuple of dicts is not accepted (must be list)."""
+        reranker = NoneReranker()
+        with pytest.raises(ValueError, match="must be a list"):
+            reranker.validate_candidates(({"id": "a"},))  # type: ignore[arg-type]

@@ -88,7 +88,7 @@ class ChunkRefiner(BaseTransform):
         """Lazy-load LLM via factory on first access."""
         if self.use_llm and self._llm is None:
             try:
-                self._llm = LLMFactory.create(self.settings)
+                self._llm = LLMFactory.create_llm(self.settings)
                 logger.info("LLM initialised for chunk refinement")
             except Exception:
                 logger.warning(

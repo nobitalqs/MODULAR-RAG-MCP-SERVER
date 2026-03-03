@@ -353,7 +353,7 @@ class TestConfiguration:
 
     def test_lazy_llm_initialization(self, mock_settings_with_llm):
         """Test that LLM is only initialized when needed."""
-        with patch('src.ingestion.transform.chunk_refiner.LLMFactory.create') as mock_factory:
+        with patch('src.ingestion.transform.chunk_refiner.LLMFactory.create_llm') as mock_factory:
             refiner = ChunkRefiner(mock_settings_with_llm)
 
             # LLM not initialized yet
@@ -366,7 +366,7 @@ class TestConfiguration:
 
     def test_llm_init_failure_disables_llm(self, mock_settings_with_llm):
         """Test that LLM initialization failure disables LLM mode."""
-        with patch('src.ingestion.transform.chunk_refiner.LLMFactory.create', side_effect=Exception("Init failed")):
+        with patch('src.ingestion.transform.chunk_refiner.LLMFactory.create_llm', side_effect=Exception("Init failed")):
             refiner = ChunkRefiner(mock_settings_with_llm)
 
             # Try to access LLM

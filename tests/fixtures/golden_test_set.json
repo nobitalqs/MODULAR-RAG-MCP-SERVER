@@ -1,36 +1,139 @@
 {
-  "description": "Golden test set for Modular RAG MCP Server evaluation. Contains test queries with expected chunk IDs for IR metrics and optional reference answers for LLM-as-Judge metrics.",
-  "version": "1.0",
+  "description": "Golden test set for Modular RAG MCP Server evaluation. Contains test queries with expected chunk IDs for IR metrics (hit_rate, MRR) and reference answers for LLM-as-Judge metrics (faithfulness, answer_relevancy).",
+  "version": "2.0",
+  "documents": {
+    "attention_paper": "tests/fixtures/sample_documents/attention_paper.pdf (Vaswani et al. 2017 — Attention Is All You Need)",
+    "rag_paper": "tests/fixtures/sample_documents/rag_paper.pdf (Kim et al. — Towards a Science of Scaling Agent Systems)",
+    "dev_spec": "tests/fixtures/sample_documents/DEV_SPEC.pdf (Project specification document)"
+  },
   "test_cases": [
     {
-      "query": "What is Modular RAG?",
-      "expected_chunk_ids": [],
-      "expected_sources": [],
-      "reference_answer": "Modular RAG is a Retrieval-Augmented Generation system built with modular, pluggable components that can be configured and swapped independently."
+      "id": "exact_01",
+      "category": "exact_fact",
+      "query": "What is scaled dot-product attention?",
+      "expected_chunk_ids": ["9edfa40e_0013_c428535d", "9edfa40e_0002_17162646"],
+      "expected_sources": ["attention_paper.pdf"],
+      "reference_answer": "Scaled dot-product attention computes attention weights by taking the dot product of queries with keys, dividing by the square root of the key dimension, and applying softmax to get weights on the values."
     },
     {
-      "query": "How to configure Azure OpenAI?",
-      "expected_chunk_ids": [],
-      "expected_sources": [],
-      "reference_answer": "Configure Azure OpenAI by setting the provider to 'azure' in settings.yaml, along with the deployment_name, azure_endpoint, api_version, and api_key fields."
+      "id": "exact_02",
+      "category": "exact_fact",
+      "query": "How does multi-head attention work in the Transformer?",
+      "expected_chunk_ids": ["9edfa40e_0007_ab0f37e8", "9edfa40e_0013_c428535d", "9edfa40e_0015_cc00a3ff"],
+      "expected_sources": ["attention_paper.pdf"],
+      "reference_answer": "Multi-head attention runs multiple attention functions in parallel. Each head linearly projects queries, keys and values to different subspaces, computes attention independently, then concatenates and projects the results."
     },
     {
-      "query": "What is hybrid search and how does it work?",
-      "expected_chunk_ids": [],
-      "expected_sources": [],
-      "reference_answer": "Hybrid search combines dense retrieval (semantic embeddings) and sparse retrieval (BM25 keyword matching), then fuses results using Reciprocal Rank Fusion (RRF) for better recall."
+      "id": "exact_03",
+      "category": "exact_fact",
+      "query": "Describe the Transformer model architecture",
+      "expected_chunk_ids": ["9edfa40e_0010_ee57b28c", "9edfa40e_0004_ff50f04d"],
+      "expected_sources": ["attention_paper.pdf"],
+      "reference_answer": "The Transformer uses an encoder-decoder architecture based entirely on attention mechanisms, without recurrence or convolution. The encoder maps an input sequence to continuous representations, and the decoder generates output tokens autoregressively."
     },
     {
-      "query": "Explain the chunking strategy",
-      "expected_chunk_ids": [],
-      "expected_sources": [],
-      "reference_answer": "Documents are split into chunks using configurable strategies (recursive, semantic, or fixed-length). Chunks are then refined and enriched with metadata before storage."
+      "id": "exact_04",
+      "category": "exact_fact",
+      "query": "What is positional encoding and why is it needed?",
+      "expected_chunk_ids": ["9edfa40e_0020_1dc67e85", "9edfa40e_0021_e2e3898c"],
+      "expected_sources": ["attention_paper.pdf"],
+      "reference_answer": "Positional encoding adds sinusoidal signals to input embeddings so the model can utilize sequence order. Since the Transformer has no recurrence or convolution, it needs explicit position information."
     },
     {
-      "query": "What evaluation metrics are supported?",
-      "expected_chunk_ids": [],
-      "expected_sources": [],
-      "reference_answer": "The system supports hit_rate, MRR (custom metrics), and Ragas LLM-as-Judge metrics including faithfulness, answer_relevancy, and context_precision."
+      "id": "exact_05",
+      "category": "exact_fact",
+      "query": "How does self-attention differ from encoder-decoder attention?",
+      "expected_chunk_ids": ["9edfa40e_0017_e80fb759", "9edfa40e_0018_2f45349b"],
+      "expected_sources": ["attention_paper.pdf"],
+      "reference_answer": "In self-attention, queries, keys, and values all come from the same sequence, so each position can attend to all positions. In encoder-decoder attention, queries come from the decoder while keys and values come from the encoder output."
+    },
+    {
+      "id": "semantic_01",
+      "category": "semantic_understanding",
+      "query": "How does the hybrid search pipeline combine dense and sparse retrieval?",
+      "expected_chunk_ids": ["4470c41f_0002_994d35ee", "4470c41f_0000_39f7de0f"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The hybrid search pipeline runs dense retrieval (semantic embeddings via ChromaDB) and sparse retrieval (BM25 keyword matching) in parallel, then fuses results using Reciprocal Rank Fusion (RRF) to balance precision and recall."
+    },
+    {
+      "id": "semantic_02",
+      "category": "semantic_understanding",
+      "query": "What is the Registry Pattern used in this project?",
+      "expected_chunk_ids": ["4470c41f_0116_213536a0", "4470c41f_0117_ab365ddd"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The Registry Pattern uses Base(ABC) + Factory(Registry) + multiple implementations. Providers register at runtime, and new providers can be added without modifying the factory code."
+    },
+    {
+      "id": "semantic_03",
+      "category": "semantic_understanding",
+      "query": "How does the MCP server expose knowledge base tools?",
+      "expected_chunk_ids": ["4470c41f_0004_bc41e3a3", "4470c41f_0006_f3b2d0de", "4470c41f_0007_fdd12536"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The MCP server implements the Model Context Protocol with JSON-RPC over stdio transport. It exposes tools like query_knowledge_hub, list_collections, get_document_summary, and delete_document that AI assistants can invoke."
+    },
+    {
+      "id": "semantic_04",
+      "category": "semantic_understanding",
+      "query": "What is Reciprocal Rank Fusion and how is it configured?",
+      "expected_chunk_ids": ["4470c41f_0002_994d35ee", "4470c41f_0018_e5a883c5"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "Reciprocal Rank Fusion (RRF) merges ranked lists from multiple retrieval methods by computing a fused score based on reciprocal rank. The parameter rrf_k (default 60) controls the impact of lower-ranked items."
+    },
+    {
+      "id": "semantic_05",
+      "category": "semantic_understanding",
+      "query": "How does the reranker improve retrieval quality?",
+      "expected_chunk_ids": ["4470c41f_0018_e5a883c5", "4470c41f_0019_c7ede47d", "4470c41f_0029_412acd92"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The reranker uses a cross-encoder model to score query-document pairs more precisely than initial retrieval. It re-orders the top candidates from RRF fusion to push the most relevant chunks higher, improving precision."
+    },
+    {
+      "id": "cross_01",
+      "category": "cross_document",
+      "query": "What evaluation metrics does the system support and how are they computed?",
+      "expected_chunk_ids": ["4470c41f_0031_bb3d0cf6", "4470c41f_0177_f97da582"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The system supports custom metrics (hit_rate, MRR) computed locally without API calls, and Ragas LLM-as-Judge metrics (faithfulness, answer_relevancy, context_precision) computed via OpenAI API."
+    },
+    {
+      "id": "cross_02",
+      "category": "cross_document",
+      "query": "What embedding models and dimensions are used in this system?",
+      "expected_chunk_ids": ["4470c41f_0112_3ebb308f", "4470c41f_0113_bae09690"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "The system supports multiple embedding providers. The local Ollama setup uses nomic-embed-text (768 dimensions), while Azure/OpenAI providers offer text-embedding-3-small (1536 dimensions)."
+    },
+    {
+      "id": "cross_03",
+      "category": "cross_document",
+      "query": "How do agent systems scale according to the literature?",
+      "expected_chunk_ids": ["e0313fc7_0000_5869e21c", "e0313fc7_0001_ff8a6ebf", "e0313fc7_0011_a13dd9a0"],
+      "expected_sources": ["rag_paper.pdf"],
+      "reference_answer": "Agent system scaling involves characterizing performance through empirical coordination metrics including efficiency, overhead, error amplification, and redundancy. Single-agent and multi-agent systems have different scaling properties."
+    },
+    {
+      "id": "chinese_01",
+      "category": "chinese",
+      "query": "文档切分策略是如何设计的？",
+      "expected_chunk_ids": ["4470c41f_0003_7f61f694", "4470c41f_0008_94a6615d"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "文档切分采用可配置的分割策略，支持递归分割（RecursiveSplitter）。默认配置为 chunk_size=1000、chunk_overlap=200，切分后还会经过 ChunkRefiner 和 MetadataEnricher 进行优化和元数据增强。"
+    },
+    {
+      "id": "chinese_02",
+      "category": "chinese",
+      "query": "如何通过 settings.yaml 配置系统？",
+      "expected_chunk_ids": ["4470c41f_0024_9e28dfa8", "4470c41f_0027_4e824fd0"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "系统采用配置驱动架构：settings.yaml 定义所有组件的参数（LLM/Embedding/VectorStore/Rerank 等），解析为 Settings frozen dataclass，再通过 Factory.create_from_settings() 实例化对应组件。"
+    },
+    {
+      "id": "chinese_03",
+      "category": "chinese",
+      "query": "可视化管理平台包含哪些页面？",
+      "expected_chunk_ids": ["4470c41f_0006_f3b2d0de", "4470c41f_0007_fdd12536"],
+      "expected_sources": ["DEV_SPEC.pdf"],
+      "reference_answer": "Dashboard 包含六个页面：Overview（系统概览）、Data Browser（数据浏览）、Ingestion Manager（摄取管理）、Ingestion Traces（摄取链路追踪）、Query Traces（查询链路追踪）和 Evaluation Panel（评估面板）。"
     }
   ]
 }

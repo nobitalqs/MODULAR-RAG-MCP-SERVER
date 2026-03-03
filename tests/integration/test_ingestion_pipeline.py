@@ -148,10 +148,17 @@ class TestPipelineComponents:
         assert settings.ingestion is not None
 
     def test_embedding_creates_vectors(self, settings) -> None:
-        from src.libs.embedding import AzureEmbedding, EmbeddingFactory
+        from src.libs.embedding import (
+            AzureEmbedding,
+            EmbeddingFactory,
+            OllamaEmbedding,
+            OpenAIEmbedding,
+        )
 
         factory = EmbeddingFactory()
         factory.register_provider("azure", AzureEmbedding)
+        factory.register_provider("openai", OpenAIEmbedding)
+        factory.register_provider("ollama", OllamaEmbedding)
         embedding = factory.create_from_settings(settings.embedding)
 
         vectors = embedding.embed(["Hello world", "Testing"])
@@ -159,10 +166,12 @@ class TestPipelineComponents:
         assert len(vectors[0]) > 0
 
     def test_llm_responds(self, settings) -> None:
-        from src.libs.llm import AzureLLM, LLMFactory, Message
+        from src.libs.llm import AzureLLM, LLMFactory, Message, OllamaLLM, OpenAILLM
 
         factory = LLMFactory()
         factory.register_provider("azure", AzureLLM)
+        factory.register_provider("openai", OpenAILLM)
+        factory.register_provider("ollama", OllamaLLM)
         llm = factory.create_from_settings(settings.llm)
 
         response = llm.chat([Message(role="user", content="Say hello.")])

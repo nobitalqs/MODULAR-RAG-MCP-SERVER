@@ -47,7 +47,7 @@ class TestGetContext:
     def test_empty_session(self, store):
         mem = ConversationMemory(store=store, max_turns=10, summarize_threshold=5)
         ctx = mem.get_context("nonexistent")
-        assert ctx.turns == []
+        assert ctx.turns == ()
         assert ctx.summary is None
 
 

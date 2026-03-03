@@ -78,7 +78,7 @@ class TestHyDERewriterErrorHandling:
         mock_llm.chat.side_effect = RuntimeError("LLM unavailable")
         rewriter = HyDERewriter(llm=mock_llm)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)
         assert result.strategy == "hyde"
 
     def test_empty_response_falls_back_to_original(self, mock_llm):
@@ -88,7 +88,7 @@ class TestHyDERewriterErrorHandling:
         )
         rewriter = HyDERewriter(llm=mock_llm)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)
 
     def test_whitespace_only_response_falls_back(self, mock_llm):
         mock_llm.chat.return_value = ChatResponse(
@@ -97,4 +97,4 @@ class TestHyDERewriterErrorHandling:
         )
         rewriter = HyDERewriter(llm=mock_llm)
         result = rewriter.rewrite("some query")
-        assert result.rewritten_queries == ["some query"]
+        assert result.rewritten_queries == ("some query",)

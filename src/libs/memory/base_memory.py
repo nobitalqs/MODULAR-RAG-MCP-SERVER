@@ -30,7 +30,7 @@ class SessionContext:
     """
 
     session_id: str
-    turns: list[ConversationTurn]
+    turns: tuple[ConversationTurn, ...]
     summary: str | None
 
 
@@ -45,8 +45,8 @@ class BaseMemoryStore(ABC):
         """Append a turn to a session."""
 
     @abstractmethod
-    def get_turns(self, session_id: str) -> list[ConversationTurn]:
-        """Retrieve all turns for a session. Returns [] if expired/missing."""
+    def get_turns(self, session_id: str) -> tuple[ConversationTurn, ...]:
+        """Retrieve all turns for a session. Returns () if expired/missing."""
 
     @abstractmethod
     def get_summary(self, session_id: str) -> str | None:

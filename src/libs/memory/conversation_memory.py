@@ -55,7 +55,7 @@ class ConversationMemory:
         windowed_turns = ctx.turns[-self._max_turns:]
         return SessionContext(
             session_id=ctx.session_id,
-            turns=windowed_turns,
+            turns=tuple(windowed_turns),
             summary=ctx.summary,
         )
 

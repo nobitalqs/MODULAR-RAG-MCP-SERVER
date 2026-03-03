@@ -41,29 +41,29 @@ class RedisMemoryStore(BaseMemoryStore):
     def _refresh_ttl(self, session_id: str) -> None:
         self._client.expire(self._key(session_id), self._session_ttl)
 
-    def _decode_turns(self, raw: bytes | None) -> list[ConversationTurn]:
+    def _decode_turns(self, raw: bytes | None) -> tuple[ConversationTurn, ...]:
         if raw is None:
-            return []
+            return ()
         try:
             data = json.loads(raw)
-            return [ConversationTurn(role=t["role"], content=t["content"]) for t in data]
+            return tuple(ConversationTurn(role=t["role"], content=t["content"]) for t in data)
         except (json.JSONDecodeError, KeyError) as exc:
             logger.warning("Failed to decode turns: %s", exc)
-            return []
+            return ()
 
     @staticmethod
-    def _encode_turns(turns: list[ConversationTurn]) -> str:
+    def _encode_turns(turns: tuple[ConversationTurn, ...]) -> str:
         return json.dumps([{"role": t.role, "content": t.content} for t in turns])
 
     def add_turn(self, session_id: str, turn: ConversationTurn) -> None:
         key = self._key(session_id)
         raw = self._client.hget(key, "turns")
         existing = self._decode_turns(raw)
-        existing.append(turn)
-        self._client.hset(key, "turns", self._encode_turns(existing))
+        updated = (*existing, turn)
+        self._client.hset(key, "turns", self._encode_turns(updated))
         self._refresh_ttl(session_id)
 
-    def get_turns(self, session_id: str) -> list[ConversationTurn]:
+    def get_turns(self, session_id: str) -> tuple[ConversationTurn, ...]:
         raw = self._client.hget(self._key(session_id), "turns")
         return self._decode_turns(raw)
 

@@ -27,14 +27,14 @@ class TestConversationTurn:
 
 class TestSessionContext:
     def test_fields(self):
-        turns = [ConversationTurn("user", "hi"), ConversationTurn("assistant", "hello")]
+        turns = (ConversationTurn("user", "hi"), ConversationTurn("assistant", "hello"))
         ctx = SessionContext(session_id="s1", turns=turns, summary=None)
         assert ctx.session_id == "s1"
         assert len(ctx.turns) == 2
         assert ctx.summary is None
 
     def test_frozen(self):
-        ctx = SessionContext(session_id="s1", turns=[], summary=None)
+        ctx = SessionContext(session_id="s1", turns=(), summary=None)
         with pytest.raises(FrozenInstanceError):
             ctx.session_id = "s2"
 
@@ -57,7 +57,7 @@ class TestInMemoryStoreBasic:
     def test_get_turns_empty_session(self):
         store = InMemoryStore(session_ttl=3600)
         turns = store.get_turns("nonexistent")
-        assert turns == []
+        assert turns == ()
 
     def test_multiple_sessions_isolated(self):
         store = InMemoryStore(session_ttl=3600)
@@ -71,7 +71,7 @@ class TestInMemoryStoreBasic:
         store = InMemoryStore(session_ttl=3600)
         store.add_turn("s1", ConversationTurn("user", "hello"))
         store.clear("s1")
-        assert store.get_turns("s1") == []
+        assert store.get_turns("s1") == ()
 
     def test_clear_nonexistent_does_not_raise(self):
         store = InMemoryStore(session_ttl=3600)
@@ -106,7 +106,7 @@ class TestInMemoryStoreTTL:
         store = InMemoryStore(session_ttl=0)  # immediate expiry
         store.add_turn("s1", ConversationTurn("user", "hello"))
         time.sleep(0.01)
-        assert store.get_turns("s1") == []
+        assert store.get_turns("s1") == ()
 
     def test_expired_summary_returns_none(self):
         store = InMemoryStore(session_ttl=0)
@@ -138,5 +138,5 @@ class TestInMemoryStoreGetContext:
         store = InMemoryStore(session_ttl=3600)
         ctx = store.get_context("nonexistent")
         assert ctx.session_id == "nonexistent"
-        assert ctx.turns == []
+        assert ctx.turns == ()
         assert ctx.summary is None

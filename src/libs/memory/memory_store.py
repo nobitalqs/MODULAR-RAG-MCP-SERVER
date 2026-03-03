@@ -58,12 +58,12 @@ class InMemoryStore(BaseMemoryStore):
             data.turns.append(turn)
             data.last_access = time.monotonic()
 
-    def get_turns(self, session_id: str) -> list[ConversationTurn]:
+    def get_turns(self, session_id: str) -> tuple[ConversationTurn, ...]:
         with self._lock:
             data = self._get_session(session_id)
             if data is None:
-                return []
-            return list(data.turns)
+                return ()
+            return tuple(data.turns)
 
     def get_summary(self, session_id: str) -> str | None:
         with self._lock:
@@ -90,10 +90,10 @@ class InMemoryStore(BaseMemoryStore):
             data = self._get_session(session_id)
             if data is None:
                 return SessionContext(
-                    session_id=session_id, turns=[], summary=None,
+                    session_id=session_id, turns=(), summary=None,
                 )
             return SessionContext(
                 session_id=session_id,
-                turns=list(data.turns),
+                turns=tuple(data.turns),
                 summary=data.summary,
             )

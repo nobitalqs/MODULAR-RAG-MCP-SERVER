@@ -157,6 +157,31 @@ class LLMFactory:
 
         return ProviderChain(providers)
 
+    @classmethod
+    def create_llm(cls, settings: Any) -> BaseLLM:
+        """Convenience class method: create an LLM from full Settings.
+
+        Instantiates a factory, registers all known text LLM providers,
+        and routes to the configured provider via ``settings.llm``.
+
+        Args:
+            settings: Root Settings object (must have ``.llm`` attribute).
+
+        Returns:
+            A configured BaseLLM instance.
+        """
+        from src.libs.llm.azure_llm import AzureLLM
+        from src.libs.llm.deepseek_llm import DeepSeekLLM
+        from src.libs.llm.ollama_llm import OllamaLLM
+        from src.libs.llm.openai_llm import OpenAILLM
+
+        factory = cls()
+        factory.register_provider("openai", OpenAILLM)
+        factory.register_provider("azure", AzureLLM)
+        factory.register_provider("deepseek", DeepSeekLLM)
+        factory.register_provider("ollama", OllamaLLM)
+        return factory.create_from_settings(settings.llm)
+
     def list_providers(self) -> list[str]:
         """Return sorted list of registered provider names."""
         return sorted(self._providers)

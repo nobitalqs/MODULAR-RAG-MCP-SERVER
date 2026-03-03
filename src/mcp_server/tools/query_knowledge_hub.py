@@ -414,6 +414,9 @@ class QueryKnowledgeHubTool:
                     self._apply_rerank, query, results, effective_top_k, trace,
                 )
 
+            # Enforce top_k contract regardless of rerank setting
+            results = results[:effective_top_k]
+
             # Build response
             response = self._response_builder.build(
                 results=results,

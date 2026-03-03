@@ -272,6 +272,35 @@ class TestRewriterFailure:
         assert response is not None
 
 
+class TestTopKContract:
+    """Results must never exceed effective_top_k regardless of rerank setting."""
+
+    @pytest.mark.asyncio
+    async def test_rerank_disabled_respects_top_k(self):
+        """With rerank off, multi-query should still return at most top_k results."""
+        # Create more results than default top_k (10)
+        results_q1 = [_make_result(f"a{i}", 0.9 - i * 0.01) for i in range(8)]
+        results_q2 = [_make_result(f"b{i}", 0.85 - i * 0.01) for i in range(8)]
+
+        mock_hybrid = MagicMock()
+        mock_hybrid.search.side_effect = [results_q1, results_q2]
+
+        rewriter = MagicMock()
+        rewriter.rewrite.return_value = FakeRewriteResult(
+            original_query="test",
+            rewritten_queries=("q1", "q2"),
+            reasoning=None,
+            strategy="decomposition",
+        )
+
+        tool = _make_tool(rewriter=rewriter, reranker_enabled=False)
+        tool._hybrid_search = mock_hybrid
+
+        response = await tool.execute(query="test", top_k=5)
+
+        assert len(response.citations) <= 5
+
+
 class TestRerankerReceivesOriginalQuery:
     """Reranker should use original query (user intent), not sub-queries."""
 

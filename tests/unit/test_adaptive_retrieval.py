@@ -3,7 +3,8 @@
 Tests verify the adaptive retry logic inserted between rerank and top_k slicing
 in QueryKnowledgeHubTool.execute().
 
-TDD RED phase: these tests define the contract BEFORE implementation.
+Covers: trigger on low score, skip on high score, skip when disabled,
+skip when rerank off, max retries, trace metadata recording.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.core.settings import AdaptiveRetrievalSettings
+from src.core.settings import AdaptiveRetrievalSettings, RetrievalSettings, Settings
 from src.core.types import RetrievalResult
 from src.mcp_server.tools.query_knowledge_hub import (
     QueryKnowledgeHubConfig,
@@ -238,3 +239,108 @@ class TestAdaptiveRetrieval:
             assert "top1_score=0.30" in meta["adaptive_reason"]
             assert "threshold=0.5" in meta["adaptive_reason"]
             assert meta.get("adaptive_expanded_top_k") == 10  # 5 * 2^1 = 10
+
+
+# ---------------------------------------------------------------------------
+# Settings parsing tests
+# ---------------------------------------------------------------------------
+
+
+def _minimal_settings_dict(**retrieval_overrides: object) -> dict:
+    """Build a minimal valid settings dict for Settings.from_dict()."""
+    retrieval = {
+        "dense_top_k": 20,
+        "sparse_top_k": 20,
+        "fusion_top_k": 10,
+        "rrf_k": 60,
+    }
+    retrieval.update(retrieval_overrides)
+    return {
+        "llm": {
+            "provider": "ollama",
+            "model": "m",
+            "temperature": 0.0,
+            "max_tokens": 100,
+            "base_url": "http://localhost:11434",
+        },
+        "embedding": {
+            "provider": "ollama",
+            "model": "m",
+            "dimensions": 768,
+            "base_url": "http://localhost:11434",
+        },
+        "vector_store": {
+            "provider": "chroma",
+            "persist_directory": "./data",
+            "collection_name": "test",
+        },
+        "retrieval": retrieval,
+        "rerank": {
+            "enabled": False,
+            "provider": "none",
+            "model": "none",
+            "top_k": 5,
+        },
+        "evaluation": {
+            "enabled": False,
+            "provider": "custom",
+            "metrics": ["context_precision"],
+        },
+        "observability": {
+            "log_level": "WARNING",
+            "trace_enabled": False,
+            "trace_file": "./logs/traces.jsonl",
+            "structured_logging": False,
+        },
+    }
+
+
+class TestAdaptiveRetrievalSettings:
+    """Settings dataclass and from_dict parsing tests."""
+
+    def test_retrieval_settings_default_no_adaptive(self):
+        """RetrievalSettings without adaptive should have None."""
+        rs = RetrievalSettings(dense_top_k=20, sparse_top_k=20, fusion_top_k=10, rrf_k=60)
+        assert rs.adaptive is None
+
+    def test_adaptive_settings_frozen(self):
+        """AdaptiveRetrievalSettings should be immutable."""
+        s = AdaptiveRetrievalSettings(
+            enabled=True, score_threshold=0.0, expand_factor=2, max_retries=1,
+        )
+        with pytest.raises(AttributeError):
+            s.enabled = False  # type: ignore[misc]
+
+    def test_retrieval_with_adaptive(self):
+        """RetrievalSettings should accept adaptive sub-config."""
+        adaptive = AdaptiveRetrievalSettings(
+            enabled=True, score_threshold=0.5, expand_factor=3, max_retries=2,
+        )
+        rs = RetrievalSettings(
+            dense_top_k=20, sparse_top_k=20, fusion_top_k=10, rrf_k=60,
+            adaptive=adaptive,
+        )
+        assert rs.adaptive is not None
+        assert rs.adaptive.score_threshold == 0.5
+        assert rs.adaptive.expand_factor == 3
+
+    def test_from_dict_parses_adaptive(self):
+        """Settings.from_dict should parse retrieval.adaptive section."""
+        data = _minimal_settings_dict(adaptive={
+            "enabled": True,
+            "score_threshold": -1.0,
+            "expand_factor": 2,
+            "max_retries": 1,
+        })
+        settings = Settings.from_dict(data)
+        assert settings.retrieval.adaptive is not None
+        assert settings.retrieval.adaptive.enabled is True
+        assert settings.retrieval.adaptive.score_threshold == -1.0
+        assert settings.retrieval.adaptive.expand_factor == 2
+        assert settings.retrieval.adaptive.max_retries == 1
+
+    def test_from_dict_no_adaptive_gives_none(self):
+        """Settings.from_dict without adaptive section -> None."""
+        data = _minimal_settings_dict()
+        settings = Settings.from_dict(data)
+        assert settings.retrieval.adaptive is None

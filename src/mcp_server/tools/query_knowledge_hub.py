@@ -597,8 +597,8 @@ class QueryKnowledgeHubTool:
             logger.warning("Reranking failed, using original order: %s", e)
             return results[:top_k]
 
+    @staticmethod
     def _should_retry(
-        self,
         results: list[RetrievalResult],
         threshold: float,
     ) -> bool:

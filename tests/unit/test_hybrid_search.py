@@ -498,7 +498,9 @@ class TestHybridSearchFilters:
 
         hybrid.search("Azure", top_k=5, filters={"collection": "api-docs"})
 
-        assert dense.last_filters == {"collection": "api-docs"}
+        # "collection" is storage-level routing, stripped before reaching
+        # dense retriever (ChromaDB has no such metadata field).
+        assert dense.last_filters is None
         assert sparse.last_collection == "api-docs"
 
     def test_query_filter_syntax_extraction(
@@ -535,7 +537,12 @@ class TestHybridSearchFilters:
         sample_dense_results,
         sample_sparse_results,
     ):
-        """Test post-fusion metadata filtering."""
+        """Test post-fusion metadata filtering.
+
+        "collection" is storage-level routing (ChromaDB table name), not
+        chunk metadata — it must be stripped before post-fusion filtering.
+        Only real metadata fields (doc_type, tags, etc.) should filter.
+        """
         dense = MockDenseRetriever(results=sample_dense_results)
         sparse = MockSparseRetriever(results=sample_sparse_results)
 
@@ -548,12 +555,18 @@ class TestHybridSearchFilters:
             config=config,
         )
 
+        # collection-only filter should NOT remove any results
         results = hybrid.search(
             "Azure", top_k=10, filters={"collection": "api-docs"},
         )
+        assert len(results) > 0  # nothing filtered out
 
-        for r in results:
-            assert r.metadata.get("collection") == "api-docs"
+        # real metadata filter (doc_type) should still work
+        results_filtered = hybrid.search(
+            "Azure", top_k=10,
+            filters={"collection": "api-docs", "doc_type": "nonexistent"},
+        )
+        assert len(results_filtered) == 0  # all filtered out by doc_type
 
 
 # =============================================================================
@@ -812,6 +825,241 @@ class TestCreateHybridSearch:
         assert hybrid.query_processor is query_processor
         assert hybrid.dense_retriever is dense
         assert hybrid.sparse_retriever is sparse
+
+
+# =============================================================================
+# Weight Configuration Tests (K1)
+# =============================================================================
+
+
+class TestHybridSearchWeights:
+    """Test hybrid search weight configuration (K1)."""
+
+    def test_default_weights_are_uniform(self):
+        """Test that default weights are 1.0 (backward compatible)."""
+        config = HybridSearchConfig()
+        assert config.dense_weight == 1.0
+        assert config.sparse_weight == 1.0
+
+    def test_weights_propagate_from_settings(self):
+        """Test that weights are extracted from RetrievalSettings."""
+        from src.core.settings import RetrievalSettings
+
+        retrieval = RetrievalSettings(
+            dense_top_k=20,
+            sparse_top_k=20,
+            fusion_top_k=10,
+            rrf_k=60,
+            dense_weight=1.5,
+            sparse_weight=0.5,
+        )
+
+        # Create a mock settings object with the retrieval attribute
+        mock_settings = MagicMock()
+        mock_settings.retrieval = retrieval
+
+        hybrid = HybridSearch(settings=mock_settings)
+
+        assert hybrid.config.dense_weight == 1.5
+        assert hybrid.config.sparse_weight == 0.5
+
+    def test_asymmetric_weights_change_ranking(
+        self,
+        query_processor,
+        sample_dense_results,
+        sample_sparse_results,
+    ):
+        """Test that asymmetric weights change result ordering."""
+        dense = MockDenseRetriever(results=sample_dense_results)
+        sparse = MockSparseRetriever(results=sample_sparse_results)
+        fusion = RRFFusion(k=60)
+
+        # Dense-heavy: extreme weights so dense_1 (rank 1, dense only) beats
+        # common_chunk (ranks in both lists but lower)
+        config_dense_heavy = HybridSearchConfig(
+            dense_weight=10.0, sparse_weight=0.1,
+        )
+        hybrid_dense = HybridSearch(
+            query_processor=query_processor,
+            dense_retriever=MockDenseRetriever(results=sample_dense_results),
+            sparse_retriever=MockSparseRetriever(results=sample_sparse_results),
+            fusion=RRFFusion(k=60),
+            config=config_dense_heavy,
+        )
+
+        # Sparse-heavy: extreme weights so sparse_1 (rank 1, sparse only) wins
+        config_sparse_heavy = HybridSearchConfig(
+            dense_weight=0.1, sparse_weight=10.0,
+        )
+        hybrid_sparse = HybridSearch(
+            query_processor=query_processor,
+            dense_retriever=MockDenseRetriever(results=sample_dense_results),
+            sparse_retriever=MockSparseRetriever(results=sample_sparse_results),
+            fusion=RRFFusion(k=60),
+            config=config_sparse_heavy,
+        )
+
+        results_dense = hybrid_dense.search("Azure 配置", top_k=5)
+        results_sparse = hybrid_sparse.search("Azure 配置", top_k=5)
+
+        # Top results should differ because weights shift ranking
+        dense_top = results_dense[0].chunk_id if results_dense else None
+        sparse_top = results_sparse[0].chunk_id if results_sparse else None
+        # dense_1 ranks #1 in dense list; sparse_1 ranks #1 in sparse list
+        # With extreme weighting, the dominant list's top item should win
+        assert dense_top == "dense_1"
+        assert sparse_top == "sparse_1"
+
+    def test_zero_dense_weight_favors_sparse(
+        self,
+        query_processor,
+        sample_dense_results,
+        sample_sparse_results,
+    ):
+        """Test that zero dense_weight effectively disables dense in fusion."""
+        config = HybridSearchConfig(dense_weight=0.0, sparse_weight=1.0)
+        hybrid = HybridSearch(
+            query_processor=query_processor,
+            dense_retriever=MockDenseRetriever(results=sample_dense_results),
+            sparse_retriever=MockSparseRetriever(results=sample_sparse_results),
+            fusion=RRFFusion(k=60),
+            config=config,
+        )
+
+        results = hybrid.search("Azure 配置", top_k=5)
+
+        # With dense_weight=0, all dense contributions are 0.
+        # sparse_1 should rank highest (rank 1 in sparse, weight 1.0)
+        assert results[0].chunk_id == "sparse_1"
+
+    def test_zero_sparse_weight_favors_dense(
+        self,
+        query_processor,
+        sample_dense_results,
+        sample_sparse_results,
+    ):
+        """Test that zero sparse_weight effectively disables sparse in fusion."""
+        config = HybridSearchConfig(dense_weight=1.0, sparse_weight=0.0)
+        hybrid = HybridSearch(
+            query_processor=query_processor,
+            dense_retriever=MockDenseRetriever(results=sample_dense_results),
+            sparse_retriever=MockSparseRetriever(results=sample_sparse_results),
+            fusion=RRFFusion(k=60),
+            config=config,
+        )
+
+        results = hybrid.search("Azure 配置", top_k=5)
+
+        # With sparse_weight=0, all sparse contributions are 0.
+        # dense_1 should rank highest (rank 1 in dense, weight 1.0)
+        assert results[0].chunk_id == "dense_1"
+
+    def test_weights_in_config_yaml_parsing(self):
+        """Test that weights are parsed from YAML dict via Settings.from_dict()."""
+        from src.core.settings import Settings
+
+        data = {
+            "llm": {
+                "provider": "ollama", "model": "m", "temperature": 0.0,
+                "max_tokens": 100, "base_url": "http://localhost:11434",
+            },
+            "embedding": {
+                "provider": "ollama", "model": "m", "dimensions": 768,
+                "base_url": "http://localhost:11434",
+            },
+            "vector_store": {
+                "provider": "chroma", "persist_directory": "./db",
+                "collection_name": "c",
+            },
+            "retrieval": {
+                "dense_top_k": 20, "sparse_top_k": 20,
+                "fusion_top_k": 10, "rrf_k": 60,
+                "dense_weight": 1.5, "sparse_weight": 0.8,
+            },
+            "rerank": {
+                "enabled": False, "provider": "none", "model": "none",
+                "top_k": 5,
+            },
+            "evaluation": {
+                "enabled": False, "provider": "custom",
+                "metrics": ["faithfulness"],
+            },
+            "observability": {
+                "log_level": "INFO", "trace_enabled": False,
+                "trace_file": "./t.jsonl", "structured_logging": False,
+            },
+        }
+
+        settings = Settings.from_dict(data)
+        assert settings.retrieval.dense_weight == 1.5
+        assert settings.retrieval.sparse_weight == 0.8
+
+    def test_settings_validation_rejects_negative_weight(self):
+        """Test that negative weights are rejected by validate_settings()."""
+        from src.core.settings import (
+            RetrievalSettings, Settings, SettingsError, validate_settings,
+        )
+
+        # Build a minimal valid Settings with negative dense_weight
+        settings = _make_minimal_settings(dense_weight=-0.5, sparse_weight=1.0)
+
+        with pytest.raises(SettingsError, match="dense_weight"):
+            validate_settings(settings)
+
+    def test_settings_validation_rejects_both_zero(self):
+        """Test that both weights = 0 is rejected."""
+        from src.core.settings import SettingsError, validate_settings
+
+        settings = _make_minimal_settings(dense_weight=0.0, sparse_weight=0.0)
+
+        with pytest.raises(SettingsError, match="(?i)at least one"):
+            validate_settings(settings)
+
+    def test_settings_validation_accepts_one_zero(self):
+        """Test that one weight = 0 is valid (disables that channel)."""
+        from src.core.settings import validate_settings
+
+        settings = _make_minimal_settings(dense_weight=0.0, sparse_weight=1.0)
+        validate_settings(settings)  # Should not raise
+
+        settings = _make_minimal_settings(dense_weight=1.0, sparse_weight=0.0)
+        validate_settings(settings)  # Should not raise
+
+
+def _make_minimal_settings(
+    dense_weight: float = 1.0,
+    sparse_weight: float = 1.0,
+) -> "Settings":
+    """Helper to build a minimal valid Settings for weight validation tests."""
+    from src.core.settings import (
+        EvaluationSettings,
+        LLMSettings,
+        EmbeddingSettings,
+        VectorStoreSettings,
+        RetrievalSettings,
+        RerankSettings,
+        ObservabilitySettings,
+        Settings,
+    )
+    return Settings(
+        llm=LLMSettings(provider="ollama", model="m", temperature=0.0, max_tokens=100),
+        embedding=EmbeddingSettings(provider="ollama", model="m", dimensions=768),
+        vector_store=VectorStoreSettings(
+            provider="chroma", persist_directory="./db", collection_name="c",
+        ),
+        retrieval=RetrievalSettings(
+            dense_top_k=20, sparse_top_k=20, fusion_top_k=10, rrf_k=60,
+            dense_weight=dense_weight, sparse_weight=sparse_weight,
+        ),
+        rerank=RerankSettings(enabled=False, provider="none", model="none", top_k=5),
+        evaluation=EvaluationSettings(
+            enabled=False, provider="custom", metrics=["faithfulness"],
+        ),
+        observability=ObservabilitySettings(
+            log_level="INFO", trace_enabled=False,
+            trace_file="./t.jsonl", structured_logging=False,
+        ),
+    )
 
 
 # =============================================================================

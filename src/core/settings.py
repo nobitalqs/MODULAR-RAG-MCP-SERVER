@@ -237,6 +237,8 @@ class RetrievalSettings:
     sparse_top_k: int
     fusion_top_k: int
     rrf_k: int
+    dense_weight: float = 1.0
+    sparse_weight: float = 0.4
     adaptive: AdaptiveRetrievalSettings | None = None
 
 
@@ -292,6 +294,23 @@ class ObservabilitySettings:
 
 
 @dataclass(frozen=True)
+class TableExtractionSettings:
+    """Settings for PDF table extraction via PyMuPDF find_tables()."""
+
+    enabled: bool = True
+    format: str = "markdown"  # "markdown" | "json"
+
+
+@dataclass(frozen=True)
+class FormulaExtractionSettings:
+    """Settings for PDF formula extraction via pix2tex LaTeX OCR."""
+
+    enabled: bool = True
+    model: str = "pix2tex"
+    confidence_threshold: float = 0.5
+
+
+@dataclass(frozen=True)
 class IngestionSettings:
     chunk_size: int
     chunk_overlap: int
@@ -299,6 +318,8 @@ class IngestionSettings:
     batch_size: int = 100
     chunk_refiner: dict[str, Any] | None = None
     metadata_enricher: dict[str, Any] | None = None
+    table_extraction: TableExtractionSettings | None = None
+    formula_extraction: FormulaExtractionSettings | None = None
 
 
 @dataclass(frozen=True)
@@ -407,6 +428,25 @@ class Settings:
         ingestion_settings = None
         if "ingestion" in data:
             ing = _require_mapping(data, "ingestion", "settings")
+            table_extraction_settings = None
+            table_cfg = ing.get("table_extraction")
+            if isinstance(table_cfg, dict):
+                table_extraction_settings = TableExtractionSettings(
+                    enabled=table_cfg.get("enabled", True),
+                    format=table_cfg.get("format", "markdown"),
+                )
+
+            formula_extraction_settings = None
+            formula_cfg = ing.get("formula_extraction")
+            if isinstance(formula_cfg, dict):
+                formula_extraction_settings = FormulaExtractionSettings(
+                    enabled=formula_cfg.get("enabled", True),
+                    model=formula_cfg.get("model", "pix2tex"),
+                    confidence_threshold=float(
+                        formula_cfg.get("confidence_threshold", 0.5)
+                    ),
+                )
+
             ingestion_settings = IngestionSettings(
                 chunk_size=_require_int(ing, "chunk_size", "ingestion"),
                 chunk_overlap=_require_int(ing, "chunk_overlap", "ingestion"),
@@ -414,6 +454,8 @@ class Settings:
                 batch_size=ing.get("batch_size", 100),
                 chunk_refiner=ing.get("chunk_refiner"),
                 metadata_enricher=ing.get("metadata_enricher"),
+                table_extraction=table_extraction_settings,
+                formula_extraction=formula_extraction_settings,
             )
 
         vision_llm_settings = None
@@ -575,6 +617,8 @@ class Settings:
                 sparse_top_k=_require_int(retrieval, "sparse_top_k", "retrieval"),
                 fusion_top_k=_require_int(retrieval, "fusion_top_k", "retrieval"),
                 rrf_k=_require_int(retrieval, "rrf_k", "retrieval"),
+                dense_weight=float(retrieval.get("dense_weight", 1.0)),
+                sparse_weight=float(retrieval.get("sparse_weight", 0.4)),
                 adaptive=adaptive_settings,
             ),
             rerank=RerankSettings(
@@ -655,6 +699,14 @@ def validate_settings(settings: Settings) -> None:
         raise SettingsError("Missing required field: vector_store.provider")
     if not settings.retrieval.rrf_k:
         raise SettingsError("Missing required field: retrieval.rrf_k")
+    if settings.retrieval.dense_weight < 0.0:
+        raise SettingsError("retrieval.dense_weight must be >= 0.0")
+    if settings.retrieval.sparse_weight < 0.0:
+        raise SettingsError("retrieval.sparse_weight must be >= 0.0")
+    if settings.retrieval.dense_weight == 0.0 and settings.retrieval.sparse_weight == 0.0:
+        raise SettingsError(
+            "At least one of retrieval.dense_weight or retrieval.sparse_weight must be > 0.0"
+        )
     if not settings.rerank.provider:
         raise SettingsError("Missing required field: rerank.provider")
     if not settings.evaluation.provider:

@@ -55,7 +55,7 @@ vision_llm:
 vector_store:
   provider: "chroma"  # Options: chroma, qdrant, pinecone
   persist_directory: "./data/db/chroma"
-  collection_name: "knowledge_hub"
+  collection_name: "default"
 
 # =============================================================================
 # Retrieval Configuration
@@ -65,6 +65,8 @@ retrieval:
   sparse_top_k: 20
   fusion_top_k: 10
   rrf_k: 60
+  dense_weight: 1.0    # Semantic retrieval weight (>= 0.0)
+  sparse_weight: 0.4   # BM25 keyword weight (>= 0.0) — tuned via K5 benchmark (dense≈2×sparse)
   adaptive:
     enabled: true
     score_threshold: 0.0
@@ -92,6 +94,12 @@ evaluation:
     - "faithfulness"
     - "answer_relevancy"
     - "context_precision"
+  # Optional: dedicated LLM for evaluation (falls back to global llm config)
+  # llm:
+  #   provider: "openai"
+  #   model: "gpt-4o-mini"
+  # Note: evaluation.embedding is intentionally omitted — always uses global
+  # embedding config to ensure vector space consistency with ingestion/retrieval.
 
 # =============================================================================
 # Observability Configuration
@@ -110,6 +118,13 @@ ingestion:
   chunk_overlap: 200
   splitter: "recursive"  # Options: recursive, semantic, fixed
   batch_size: 100
+  # table_extraction:              # PyMuPDF find_tables, zero new dependencies
+  #   enabled: true
+  #   format: "markdown"           # Options: markdown, json
+  # formula_extraction:            # pix2tex LaTeX OCR (optional dep, see requirements-formula.txt)
+  #   enabled: true
+  #   model: "pix2tex"
+  #   confidence_threshold: 0.5    # Below this → [FORMULA: unrecognized]
 
 # =============================================================================
 # Dashboard Configuration
@@ -160,7 +175,7 @@ dashboard:
 #   provider: "memory"         # Options: memory, redis
 #   max_turns: 10              # Sliding window size
 #   summarize_threshold: 20    # Trigger LLM compression above this
-#   summarize_enabled: false   # Enable LLM-based summary compression
+#   summarize_enabled: true    # Enable LLM-based summary compression
 #   session_ttl: 3600          # Session expiry in seconds
 
 # =============================================================================

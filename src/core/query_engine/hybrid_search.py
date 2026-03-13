@@ -78,6 +78,8 @@ class HybridSearchConfig:
     enable_sparse: bool = True
     parallel_retrieval: bool = True
     metadata_filter_post: bool = True
+    dense_weight: float = 1.0
+    sparse_weight: float = 1.0
 
 
 @dataclass
@@ -194,6 +196,8 @@ class HybridSearch:
             enable_sparse=True,
             parallel_retrieval=True,
             metadata_filter_post=True,
+            dense_weight=getattr(retrieval_config, "dense_weight", 1.0),
+            sparse_weight=getattr(retrieval_config, "sparse_weight", 1.0),
         )
 
     def search(
@@ -496,11 +500,19 @@ class HybridSearch:
             return None, "Dense retriever not configured"
 
         try:
+            # Strip "collection" from filters — it's a storage-level routing
+            # concept (ChromaDB table name), not a metadata field on chunks.
+            # Passing it as a ChromaDB where clause returns 0 results.
+            dense_filters = (
+                {k: v for k, v in filters.items() if k != "collection"}
+                if filters else None
+            ) or None
+
             _t0 = time.monotonic()
             results = self.dense_retriever.retrieve(
                 query=query,
                 top_k=self.config.dense_top_k,
-                filters=filters,
+                filters=dense_filters,
                 trace=trace,
             )
             _elapsed = (time.monotonic() - _t0) * 1000.0
@@ -587,10 +599,13 @@ class HybridSearch:
             return self._interleave_results(dense_results, sparse_results, top_k)
 
         ranking_lists = []
+        weights = []
         if dense_results:
             ranking_lists.append(dense_results)
+            weights.append(self.config.dense_weight)
         if sparse_results:
             ranking_lists.append(sparse_results)
+            weights.append(self.config.sparse_weight)
 
         if not ranking_lists:
             return []
@@ -599,8 +614,9 @@ class HybridSearch:
             return ranking_lists[0][:top_k]
 
         _t0 = time.monotonic()
-        fused = self.fusion.fuse(
+        fused = self.fusion.fuse_with_weights(
             ranking_lists=ranking_lists,
+            weights=weights,
             top_k=top_k,
             trace=trace,
         )
@@ -674,7 +690,12 @@ class HybridSearch:
         if not filters:
             return results
 
-        return [r for r in results if self._matches_filters(r.metadata, filters)]
+        # Strip "collection" — it's storage-level routing, not chunk metadata.
+        metadata_filters = {k: v for k, v in filters.items() if k != "collection"}
+        if not metadata_filters:
+            return results
+
+        return [r for r in results if self._matches_filters(r.metadata, metadata_filters)]
 
     def _matches_filters(
         self,
@@ -691,14 +712,7 @@ class HybridSearch:
             True if all filters match, False otherwise.
         """
         for key, value in filters.items():
-            if key == "collection":
-                meta_collection = (
-                    metadata.get("collection")
-                    or metadata.get("source_collection")
-                )
-                if meta_collection != value:
-                    return False
-            elif key == "doc_type":
+            if key == "doc_type":
                 if metadata.get("doc_type") != value:
                     return False
             elif key == "tags":

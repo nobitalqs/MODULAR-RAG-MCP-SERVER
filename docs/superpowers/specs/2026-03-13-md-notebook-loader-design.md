@@ -187,7 +187,7 @@ split boundary.
 
 | Region | Detection | Protection |
 |--------|-----------|------------|
-| Fenced code blocks | ` ``` ... ``` ` (with optional language tag) | Replace with `<<<PROTECTED_N>>>` placeholder before splitting, restore after |
+| Fenced code blocks | ` ``` ... ``` ` (with optional language tag) | Replace with `<<<PROTECTED_{uuid}>>>` placeholder before splitting, restore after |
 | Tables | Consecutive lines matching `\|...\|` pattern | Same placeholder mechanism |
 
 **Algorithm:**
@@ -245,7 +245,9 @@ def _rule_based_refine(self, text: str, doc_type: str = "pdf") -> str:
     text = self._strip_trailing_whitespace(text)
     return text
 
-# Called from transform():
+# In transform() for-loop, replace the existing call:
+#   rule_text = self._rule_based_refine(chunk.text)
+# with:
 doc_type = chunk.metadata.get("doc_type", "pdf")
 text = self._rule_based_refine(chunk.text, doc_type=doc_type)
 ```
@@ -297,8 +299,9 @@ The default parameter in `discover_files()` signature changes:
 Call sites remain unchanged.
 
 **`_image_utils.py` path resolution:** All image paths resolved via
-`Path(image_storage_dir).resolve()` to avoid CWD-dependent behavior (same latent
-issue exists in PdfLoader — not compounding it here).
+`resolve_path(image_storage_dir)` from `src.core.settings`, which resolves relative
+paths against `PROJECT_ROOT` (not CWD). This matches the rest of the project's
+path resolution strategy and eliminates CWD dependency.
 
 ## 4. File Inventory
 

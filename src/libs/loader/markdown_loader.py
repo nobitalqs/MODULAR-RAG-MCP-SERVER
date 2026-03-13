@@ -157,6 +157,14 @@ class MarkdownLoader(BaseLoader):
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     @staticmethod
+    def _generate_image_id(doc_hash: str, sequence: int) -> str:
+        """Generate unique image ID for markdown images.
+
+        Format: {doc_hash[:8]}_md_{sequence}
+        """
+        return f"{doc_hash[:8]}_md_{sequence}"
+
+    @staticmethod
     def _compute_file_hash(file_path: Path) -> str:
         """Compute SHA256 hex digest of raw file bytes."""
         sha256 = hashlib.sha256()

@@ -214,6 +214,11 @@ def _register_default_tools(protocol_handler: ProtocolHandler) -> None:
 
     register_delete_tool(protocol_handler)
 
+    # L5: Ingest document tool
+    from src.mcp_server.tools.ingest_document import register_tool as register_ingest_tool
+
+    register_ingest_tool(protocol_handler)
+
 
 def create_mcp_server(
     server_name: str,

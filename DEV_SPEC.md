@@ -2273,8 +2273,8 @@ memory:
 11. **阶段 K：检索质量增强（Retrieval Quality Enhancement）**
    - 目的：三项独立改进提升 RAG 检索质量。第一层：混合检索权重可配置化（暴露 dense/sparse 权重到 settings）；第二层：PDF 表格与公式结构化提取（PyMuPDF find_tables + pix2tex LaTeX OCR）；第三层（Phase 2，暂不实现）：分层 Memory 存储（热/温/冷三层，LRU 淘汰降级而非删除）。
    - 设计文档：`docs/superpowers/specs/2026-03-12-rag-improvements-design.md`
-12. **阶段 L：多格式文档摄入（Markdown & Notebook Loader）**
-   - 目的：扩展文档摄入能力，支持 `.md`（Obsidian 笔记 + 项目文档）和 `.ipynb`（Jupyter Notebook）格式。新增 LoaderFactory（扩展名路由）、MarkdownLoader（frontmatter 解析 + 图片提取）、NotebookLoader（cell 感知转换 + 文本 output 保留）、MarkdownSplitter（heading 层级切分 + 代码块/表格保护）。Pipeline 改为格式无关（通过 Factory 自动分派 loader）。
+12. **阶段 L：多格式文档摄入与远程摄入（Multi-Format Loader + Ingestion MCP Tool）**
+   - 目的：扩展文档摄入能力，分两阶段实施。Phase 1：LoaderFactory（扩展名路由）、MarkdownLoader（frontmatter 扁平合并，暂不处理图片）、SourceCodeLoader（`.C/.cpp/.py/.h` 语言检测）、`ingest_document` MCP Tool（外部客户端远程触发摄入）、Pipeline 格式无关化、ChunkRefiner doc_type 适配。Phase 2：NotebookLoader（cell 感知）、MarkdownSplitter（heading 层级 + protected regions）。
    - 设计文档：`docs/superpowers/specs/2026-03-13-md-notebook-loader-design.md`
 
 
@@ -2427,18 +2427,26 @@ memory:
 
 > **注**：K6 标记 ★ 表示已完成设计但暂不实现，待前 5 个任务完成后视需求启动。
 
-#### 阶段 L：多格式文档摄入 (Markdown & Notebook Loader)
+#### 阶段 L：多格式文档摄入与远程摄入 (Multi-Format Loader + Ingestion MCP Tool)
+
+**Phase 1（本迭代）：**
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| L1 | LoaderFactory（扩展名路由 + Registry 模式） | [ ] | - | LoaderFactory + register_provider + create_for_file |
-| L2 | 图片处理工具模块 (_image_utils) | [ ] | - | _process_images + _copy_local_image，MarkdownLoader/NotebookLoader 共享 |
-| L3 | MarkdownLoader（frontmatter + 图片提取） | [ ] | - | YAML frontmatter 解析 + 本地图片 → [IMAGE: {id}] + title 提取链 |
-| L4 | NotebookLoader（cell 感知转换） | [ ] | - | nbformat v4 解析 + code/markdown/raw cell → Markdown + 文本 output 保留 + 图表丢弃 |
-| L5 | MarkdownSplitter（heading 感知 + protected regions） | [ ] | - | heading 层级分隔符 + 代码块/表格保护 + 超长 chunk 兜底 |
-| L6 | Pipeline 集成（Factory 替换硬编码 + ChunkRefiner doc_type） | [ ] | - | pipeline.py 用 LoaderFactory + ChunkRefiner 按 doc_type 分支 + ingest.py 扩展名 |
-| L7 | 单元测试 (LoaderFactory + MarkdownLoader + NotebookLoader + MarkdownSplitter + _image_utils) | [ ] | - | 契约测试 + 边界情况 + Document contract 断言 |
-| L8 | 集成测试 (md/ipynb 端到端摄入 → 检索验证) | [ ] | - | md/ipynb → Pipeline → ChromaDB → 检索命中验证 |
+| L1 | LoaderFactory（扩展名路由 + Registry 模式） | [ ] | - | LoaderFactory + register_provider + create_for_file + kwargs passthrough |
+| L2 | MarkdownLoader（frontmatter 扁平合并 + title 提取） | [ ] | - | YAML frontmatter flat merge（保护 reserved keys）+ title 提取链，暂不处理图片 |
+| L3 | SourceCodeLoader（语言检测 + raw text） | [ ] | - | _LANGUAGE_MAP(.C/.cpp/.py/.h) + line_count + filename metadata |
+| L4 | Pipeline 集成（Factory 替换硬编码 + ChunkRefiner doc_type） | [ ] | - | pipeline.py 用 LoaderFactory + ChunkRefiner 按 doc_type 分支 + ingest.py 扩展名列表 |
+| L5 | ingest_document MCP Tool | [ ] | - | MCP tool handler + asyncio.to_thread + register in protocol_handler |
+| L6 | Phase 1 单元测试 | [ ] | - | test_loader_factory + test_markdown_loader + test_source_code_loader + test_ingest_document_tool + test_pipeline_loader_selection |
+
+**Phase 2（后续迭代）：**
+
+| 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
+|---------|---------|------|---------|------|
+| L7 | NotebookLoader（cell 感知转换） | [ ] | - | nbformat v4 解析 + code/markdown/raw cell → Markdown + 文本 output 保留 + 图表丢弃 |
+| L8 | MarkdownSplitter（heading 感知 + protected regions） | [ ] | - | heading 层级分隔符 + 代码块/表格保护 + UUID placeholder + 超长 chunk 兜底 |
+| L9 | Phase 2 单元测试 + 集成测试 | [ ] | - | test_notebook_loader + test_markdown_splitter + md/ipynb 端到端摄入检索验证 |
 
 > **设计文档**：`docs/superpowers/specs/2026-03-13-md-notebook-loader-design.md`
 
@@ -2459,8 +2467,8 @@ memory:
 | 阶段 I | 5 | 5 | 100% |
 | 阶段 J | 9 | 9 | 100% |
 | 阶段 K | 5+1★ | 5 | 100% |
-| 阶段 L | 8 | 0 | 0% |
-| **总计** | **91** | **83** | **91%** |
+| 阶段 L | 6+3 | 0 | 0% |
+| **总计** | **92** | **83** | **90%** |
 
 
 ---

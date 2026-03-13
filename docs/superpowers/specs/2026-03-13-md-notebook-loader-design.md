@@ -1,31 +1,32 @@
-# Design: Markdown & Notebook Document Loader
+# Design: Multi-Format Document Loader & Ingestion MCP Tool
 
 **Date:** 2026-03-13
-**Status:** Draft
-**Scope:** Add `.md` and `.ipynb` ingestion support with structure-aware splitting
+**Status:** Draft (v2 — revised scope)
+**Scope:** Add `.md`, source code, `.ipynb` ingestion + `ingest_document` MCP tool
 
 ---
 
 ## 1. Motivation
 
 The RAG knowledge base currently only supports PDF documents. Upcoming agent workflows
-require ingesting Markdown notes (Obsidian vault + project docs) and Jupyter Notebooks
-(data analysis, tutorials, research). Both formats carry structural semantics (headings,
-code blocks, cell boundaries) that a generic text splitter destroys.
+require ingesting Markdown notes (Obsidian vault + project docs), source code files
+(`.C`, `.cpp`, `.py`), and Jupyter Notebooks. Additionally, external MCP clients need
+the ability to trigger ingestion remotely via an MCP tool.
 
 ## 2. Requirements
 
 ### Functional
 
-| ID | Requirement |
-|----|-------------|
-| F1 | Ingest `.md` files with YAML frontmatter extraction as metadata |
-| F2 | Ingest `.ipynb` files with cell-type-aware conversion to Markdown |
-| F3 | Notebook text outputs preserved; image/chart outputs discarded |
-| F4 | Local images in Markdown (`![alt](path)`) copied to `data/images/` and replaced with `[IMAGE: {id}]` placeholder (same as PDF) |
-| F5 | Structure-aware splitting: heading hierarchy as semantic boundary, code blocks and tables protected from mid-split |
-| F6 | LoaderFactory routes files by extension — pipeline is format-agnostic |
-| F7 | Settings-driven splitter selection (`markdown` or `recursive`) |
+| ID | Requirement | Phase |
+|----|-------------|-------|
+| F1 | Ingest `.md` files with YAML frontmatter extraction as metadata | 1 |
+| F2 | Ingest source code files (`.C`, `.cpp`, `.py`, `.h`, etc.) with language detection | 1 |
+| F3 | LoaderFactory routes files by extension — pipeline is format-agnostic | 1 |
+| F4 | `ingest_document` MCP tool for external clients to trigger ingestion | 1 |
+| F5 | Ingest `.ipynb` files with cell-type-aware conversion to Markdown | 2 |
+| F6 | Notebook text outputs preserved; image/chart outputs discarded | 2 |
+| F7 | Structure-aware MarkdownSplitter: heading hierarchy as semantic boundary, code blocks and tables protected | 2 |
+| F8 | Image extraction for Markdown (`![alt](path)` → `[IMAGE: {id}]`) | Future |
 
 ### Non-Functional
 
@@ -39,192 +40,162 @@ code blocks, cell boundaries) that a generic text splitter destroys.
 
 ### 3.1 Component Overview
 
+**Phase 1 (this iteration):**
+
 ```
                    ┌─────────────────┐
   file_path ──────►│  LoaderFactory   │
                    │  (ext routing)   │
-                   └───┬─────┬─────┬─┘
-                       │     │     │
-                ┌──────┘     │     └──────┐
-                ▼            ▼            ▼
-          ┌──────────┐ ┌────────────┐ ┌──────────────┐
-          │PdfLoader │ │MarkdownLoader│ │NotebookLoader│
-          └────┬─────┘ └─────┬──────┘ └──────┬───────┘
-               │             │               │
-               ▼             ▼               ▼
-            Document      Document        Document
-            (text=md)     (text=md)       (text=md)
+                   └───┬───┬─────┬───┘
+                       │   │     │
+                ┌──────┘   │     └──────┐
+                ▼          ▼            ▼
+          ┌──────────┐ ┌────────────┐ ┌────────────────┐
+          │PdfLoader │ │Markdown    │ │SourceCode      │
+          │          │ │Loader      │ │Loader           │
+          └────┬─────┘ └─────┬──────┘ └──────┬─────────┘
                │             │               │
                └─────────────┼───────────────┘
                              ▼
-                    ┌─────────────────┐
-                    │ SplitterFactory  │
-                    │ (strategy cfg)   │
-                    └───┬─────────┬───┘
-                        │         │
-                        ▼         ▼
-                  Recursive   Markdown
-                  Splitter    Splitter
-                        │         │
-                        └────┬────┘
+                   RecursiveSplitter (existing)
                              ▼
                    Transform → Encode → Store
-                   (existing pipeline, unchanged)
+
+  MCP Client ──► ingest_document tool ──► IngestionPipeline
+```
+
+**Phase 2 (later):**
+
+```
+  + NotebookLoader (.ipynb)
+  + MarkdownSplitter (heading-aware, protected regions)
 ```
 
 ### 3.2 LoaderFactory
 
-Registry-pattern factory that maps file extensions to loader classes.
+Registry-pattern factory that maps file extensions to loader classes. Thin wrapper
+around a `dict[str, type[BaseLoader]]` registry.
 
 ```python
 class LoaderFactory:
     _registry: dict[str, type[BaseLoader]]
 
     def register_provider(self, ext: str, cls: type[BaseLoader]) -> None: ...
-    def create_for_file(self, file_path: Path, **kwargs) -> BaseLoader: ...
+    def create_for_file(self, file_path: str | Path, **kwargs) -> BaseLoader: ...
 ```
 
-**Dispatch logic:** `file_path.suffix.lower().lstrip(".")` → registry lookup.
+**Dispatch logic:** `Path(file_path).suffix.lower()` → registry lookup.
 
 **Difference from other factories:** Other factories use `create_from_settings()` with
 a provider name from config. LoaderFactory uses the input file's extension because the
 choice of loader is determined by the file, not the configuration. This is an intentional
-divergence: loader selection is inherently file-driven, not config-driven. If a future
-loader needs per-format config (e.g., `.docx` password), a `LoaderSettings` section can
-be added to `settings.yaml` and passed as kwargs — but that is out of scope for now.
+divergence. If a future loader needs per-format config (e.g., `.docx` password), a
+`LoaderSettings` section can be added to `settings.yaml`.
 
 **Kwargs passthrough:** `create_for_file(file_path, **kwargs)` passes all kwargs to the
 loader constructor. Each loader's `__init__` accepts only the kwargs it needs and ignores
-the rest via `**kwargs`. This keeps the pipeline format-agnostic — no `if ext == "pdf"`
+the rest via `**kwargs`. This keeps the pipeline format-agnostic — no extension-specific
 branching in `run()`.
+
+**Extension mapping (Phase 1):**
+
+| Extension | Loader |
+|-----------|--------|
+| `.pdf` | `PdfLoader` |
+| `.md`, `.markdown` | `MarkdownLoader` |
+| `.c`, `.cpp`, `.cxx`, `.cc`, `.h`, `.hxx` | `SourceCodeLoader` |
+| `.py` | `SourceCodeLoader` |
 
 ### 3.3 MarkdownLoader
 
-**Input:** `.md` file path
-**Output:** `Document(id=sha256, text=body, metadata={...})`
+**Input:** `.md` / `.markdown` file path
+**Output:** `Document(id=doc_{hash[:16]}, text=body, metadata={...})`
 
 **Processing steps:**
 
-1. **Read file** — UTF-8 encoding
-2. **Parse frontmatter** — Detect `---` YAML block at file start, parse with
+1. **Validate extension** — `.md` or `.markdown`, else raise `ValueError`
+2. **Read file** — UTF-8 encoding
+3. **Parse frontmatter** — Regex detect `---` YAML block at file start, parse with
    `yaml.safe_load`. Malformed YAML → log warning, treat as empty frontmatter.
-3. **Process images** — Regex scan for `![alt](path)`:
-   - Local relative/absolute path → copy to `data/images/{doc_hash}/`, replace
-     with `[IMAGE: {id}]` placeholder
-   - Remote URL → keep original syntax unchanged (no download)
 4. **Build metadata:**
-   - `source_path`, `doc_hash`, `doc_type: "markdown"`
-   - `title`: frontmatter `title` field → first `# heading` → filename
-   - `frontmatter`: full parsed YAML dict (for downstream filtering)
-   - `images`: list of extracted image metadata dicts
+   - Required: `source_path`, `doc_type: "markdown"`, `doc_hash`
+   - Frontmatter fields **flat-merged** into metadata via `metadata.update(frontmatter)`
+   - **Guard**: reserved keys (`source_path`, `doc_type`, `doc_hash`) cannot be
+     overwritten by frontmatter — skip any conflicting keys with a warning
+   - `title`: frontmatter `title` → first `# heading` (scan first 20 lines) → filename
+5. **Return** `Document(id=doc_{hash[:16]}, text=body.strip(), metadata=metadata)`
 
-**Obsidian-specific syntax:** `[[wiki links]]` kept as-is (no resolution). Only
-frontmatter is parsed per requirement scope.
+**Image handling:** Not processed in Phase 1. `![alt](path)` syntax preserved as-is
+in the text — the alt text is still searchable. Image extraction deferred to Future.
 
-### 3.4 NotebookLoader
+**Obsidian-specific syntax:** `[[wiki links]]` kept as-is (no resolution).
 
-**Input:** `.ipynb` file path (nbformat v4)
-**Output:** `Document(id=sha256, text=cells_as_md, metadata={...})`
+### 3.4 SourceCodeLoader
+
+**Input:** Source code file path (`.C`, `.cpp`, `.py`, `.h`, etc.)
+**Output:** `Document(id=doc_{hash[:16]}, text=raw_source, metadata={...})`
 
 **Processing steps:**
 
-1. **Parse JSON** — `json.loads()` with UTF-8. Invalid JSON → raise `ValueError`.
-2. **Extract kernel metadata** — `metadata.kernelspec.{display_name, language}`
-3. **Convert cells to Markdown sections:**
+1. **Validate extension** — Check against `_LANGUAGE_MAP`, else raise `ValueError`
+2. **Read file** — UTF-8 with `errors="replace"` (source code may have stray bytes)
+3. **Build metadata:**
+   - `source_path`, `doc_type: "source_code"`, `doc_hash`
+   - `language`: mapped from extension (e.g., `.C` → `"C++"`, `.py` → `"Python"`)
+   - `filename`: `path.name`
+   - `line_count`: line count of the source file
 
-   | Cell type | Conversion |
-   |-----------|------------|
-   | `markdown` | Direct use (join source lines) |
-   | `code` | Wrap in ` ```{lang} ... ``` `. Append text outputs as ` **Output:** ``` ... ``` ` |
-   | `raw` | Direct use (join source lines) |
-
-4. **Output handling:**
-   - `stream` (stdout/stderr) → extract text, join
-   - `execute_result` / `display_data` with `text/plain` → extract text
-   - `image/png`, `image/svg+xml`, etc. → **discard** (per requirement)
-   - `error` → discard (tracebacks are noise for RAG). **Trade-off:** tutorial
-     notebooks sometimes use errors intentionally (e.g., demonstrating `TypeError`).
-     This is accepted as a known limitation; errors can be enabled in a future
-     config flag if needed.
-
-5. **Join sections** — `"\n\n---\n\n"` separator between cells. The `---`
-   (horizontal rule) serves as a cell boundary signal for MarkdownSplitter.
-6. **Process images** — Same as MarkdownLoader for `![alt](path)` in markdown cells.
-   Reuses shared `_image_utils` module.
-7. **Build metadata:**
-   - `source_path`, `doc_hash`, `doc_type: "notebook"`
-   - `title`: first `# heading` in first markdown cell → filename
-   - `kernel`, `language`, `cell_count`
-   - `images`: list of extracted image metadata dicts
-
-**Shared logic:** Image processing (`_process_images`, `_copy_local_image`) extracted
-to `src/libs/loader/_image_utils.py` to avoid duplication with MarkdownLoader.
-
-### 3.5 MarkdownSplitter
-
-**Purpose:** Structure-aware splitting that respects Markdown semantics.
-
-**Separator hierarchy (highest → lowest priority):**
-
-```
-\n---\n      → cell boundary / horizontal rule
-\n# <space>  → H1
-\n## <space> → H2
-\n### <space>→ H3
-\n#### <space>→ H4
-\n\n          → paragraph
-\n            → line
-<space>       → word
-```
-
-**Start-of-string handling:** The `\n# ` separator won't match a heading at the
-very beginning of the document (no leading newline). The splitter must prepend `\n`
-to the input text before splitting and strip it from the first chunk afterward.
-This avoids special-casing regex anchors while ensuring the first heading is a valid
-split boundary.
-
-**Protected regions:** Certain constructs must never be split mid-way:
-
-| Region | Detection | Protection |
-|--------|-----------|------------|
-| Fenced code blocks | ` ``` ... ``` ` (with optional language tag) | Replace with `<<<PROTECTED_{uuid}>>>` placeholder before splitting, restore after |
-| Tables | Consecutive lines matching `\|...\|` pattern | Same placeholder mechanism |
-
-**Algorithm:**
-
-1. Extract protected regions → replace with single-line placeholders
-2. Recursive split using separator hierarchy (same algorithm as
-   `RecursiveCharacterTextSplitter` from langchain)
-3. Restore placeholders → original content
-4. Post-pass: if any chunk exceeds `chunk_size` after restoration (a single
-   protected region was very large), split that chunk by lines while preserving
-   fenced code block wrappers
-
-**Heading attribution:** When splitting at a heading boundary, the heading line
-stays with the content below it (not the chunk above). This ensures each chunk
-carries its own section title for retrieval context.
-
-**Configuration:**
-
-```yaml
-ingestion:
-  splitter:
-    strategy: markdown    # or "recursive" for legacy behavior
-    chunk_size: 1000
-    chunk_overlap: 200
-```
-
-Registered in SplitterFactory: `factory.register_provider("markdown", MarkdownSplitter)`
-
-**Constructor compatibility with SplitterFactory:** `SplitterFactory.create_from_settings()`
-passes all `IngestionSettings` fields (including `batch_size`, `chunk_refiner`, etc.)
-as kwargs. `MarkdownSplitter.__init__` must accept and ignore these via `**kwargs`:
+**Language map:**
 
 ```python
-def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, **kwargs: Any) -> None:
+_LANGUAGE_MAP = {
+    ".c": "C++", ".cpp": "C++", ".cxx": "C++", ".cc": "C++",
+    ".h": "C++", ".hxx": "C++",
+    ".py": "Python",
+}
 ```
 
-This matches the pattern used by `RecursiveSplitter`.
+**Design note:** The loader reads source code as-is. No AST parsing, no comment
+extraction. The raw text is directly usable for embedding and retrieval. The existing
+`RecursiveSplitter` handles splitting by `\n\n` / `\n` which works well for code.
+
+### 3.5 ingest_document MCP Tool
+
+**Purpose:** Allow external MCP clients to trigger document ingestion remotely.
+
+**Tool schema:**
+
+```json
+{
+  "name": "ingest_document",
+  "description": "Ingest a document into the knowledge base.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "file_path": { "type": "string", "description": "Absolute path to document" },
+      "collection": { "type": "string", "default": "default" }
+    },
+    "required": ["file_path"]
+  }
+}
+```
+
+**Handler flow:**
+
+1. Validate file exists → return `isError=True` if not found
+2. Run `IngestionPipeline` via `asyncio.to_thread()` (pipeline is sync)
+3. Return success summary (doc_id, chunk_count, collection) or error message
+
+**Implementation pattern:** Follow existing tools (`query_knowledge_hub.py`):
+- Module-level `TOOL_NAME`, `TOOL_DESCRIPTION`, `TOOL_INPUT_SCHEMA`
+- `ingest_document_handler()` async function
+- `register_tool(protocol_handler)` function
+- Register in `protocol_handler.py` `_register_default_tools()`
+
+**Security considerations:**
+- File path is user-provided — validate existence but do NOT validate path traversal
+  (MCP clients are trusted within the system boundary)
+- Pipeline runs with existing settings (no config override via MCP params)
 
 ### 3.6 Transform Adaptation
 
@@ -252,8 +223,7 @@ doc_type = chunk.metadata.get("doc_type", "pdf")
 text = self._rule_based_refine(chunk.text, doc_type=doc_type)
 ```
 
-**MetadataEnricher** and **ImageCaptioner** require no changes — they already
-operate on generic `Chunk` objects with `[IMAGE: {id}]` placeholders.
+**MetadataEnricher** and **ImageCaptioner** require no changes.
 
 ### 3.7 Pipeline Integration
 
@@ -262,12 +232,16 @@ operate on generic `Chunk` objects with `[IMAGE: {id}]` placeholders.
 ```python
 # Stage 2: Loader — factory replaces hardcoded PdfLoader
 self.loader_factory = LoaderFactory()
-self.loader_factory.register_provider("pdf", PdfLoader)
-self.loader_factory.register_provider("md", MarkdownLoader)
-self.loader_factory.register_provider("ipynb", NotebookLoader)
-
-# Stage 3: Splitter — add markdown option
-splitter_factory.register_provider("markdown", MarkdownSplitter)
+self.loader_factory.register_provider(".pdf", PdfLoader)
+self.loader_factory.register_provider(".md", MarkdownLoader)
+self.loader_factory.register_provider(".markdown", MarkdownLoader)
+self.loader_factory.register_provider(".c", SourceCodeLoader)
+self.loader_factory.register_provider(".cpp", SourceCodeLoader)
+self.loader_factory.register_provider(".cxx", SourceCodeLoader)
+self.loader_factory.register_provider(".cc", SourceCodeLoader)
+self.loader_factory.register_provider(".h", SourceCodeLoader)
+self.loader_factory.register_provider(".hxx", SourceCodeLoader)
+self.loader_factory.register_provider(".py", SourceCodeLoader)
 ```
 
 **`IngestionPipeline.run()` changes:**
@@ -292,67 +266,86 @@ No `if ext == "pdf"` branching — the pipeline stays format-agnostic.
 The default parameter in `discover_files()` signature changes:
 
 ```python
-# Before: def discover_files(path, extensions=None):  extensions = extensions or [".pdf"]
-# After:  def discover_files(path, extensions=None):  extensions = extensions or [".pdf", ".md", ".ipynb"]
+# Before: extensions = extensions or [".pdf"]
+# After:  extensions = extensions or [".pdf", ".md", ".markdown", ".c", ".cpp", ".cxx", ".cc", ".h", ".hxx", ".py"]
 ```
 
 Call sites remain unchanged.
 
-**`_image_utils.py` path resolution:** All image paths resolved via
-`resolve_path(image_storage_dir)` from `src.core.settings`, which resolves relative
-paths against `PROJECT_ROOT` (not CWD). This matches the rest of the project's
-path resolution strategy and eliminates CWD dependency.
-
 ## 4. File Inventory
+
+### Phase 1 (this iteration)
 
 | Action | File | Est. Lines |
 |--------|------|-----------|
 | New | `src/libs/loader/loader_factory.py` | ~60 |
-| New | `src/libs/loader/markdown_loader.py` | ~120 |
-| New | `src/libs/loader/notebook_loader.py` | ~150 |
-| New | `src/libs/loader/_image_utils.py` | ~60 |
-| New | `src/libs/splitter/markdown_splitter.py` | ~180 |
+| New | `src/libs/loader/markdown_loader.py` | ~80 |
+| New | `src/libs/loader/source_code_loader.py` | ~60 |
+| New | `src/mcp_server/tools/ingest_document.py` | ~120 |
 | Modify | `src/ingestion/pipeline.py` | ~30 lines changed |
 | Modify | `src/ingestion/transform/chunk_refiner.py` | ~10 lines changed |
+| Modify | `src/mcp_server/protocol_handler.py` | ~5 lines changed |
 | Modify | `scripts/ingest.py` | ~3 lines changed |
 | Modify | `src/libs/loader/__init__.py` | export new classes |
-| Modify | `src/libs/splitter/__init__.py` | export new class |
-| Modify | `config/settings.yaml.example` | add comments |
 
-**Total new code:** ~570 lines across 5 new files
-**Total modifications:** ~45 lines across 6 existing files
+### Phase 2 (later)
+
+| Action | File | Est. Lines |
+|--------|------|-----------|
+| New | `src/libs/loader/notebook_loader.py` | ~150 |
+| New | `src/libs/splitter/markdown_splitter.py` | ~180 |
+| Modify | `src/libs/splitter/__init__.py` | export new class |
+
+**Phase 1 total new code:** ~320 lines across 4 new files
+**Phase 1 total modifications:** ~50 lines across 5 existing files
 
 ## 5. Test Plan
 
+### Phase 1
+
 | Test File | Type | Coverage |
 |-----------|------|----------|
-| `tests/unit/test_loader_factory.py` | Unit | Extension routing, unknown ext error, register/override |
-| `tests/unit/test_markdown_loader.py` | Unit | Frontmatter parsing (valid/malformed/missing), image extraction (local/remote/missing), title extraction fallback chain, empty file, non-UTF8, **Document contract assertion** (`source_path` in metadata) |
-| `tests/unit/test_notebook_loader.py` | Unit | Cell type conversion (markdown/code/raw), text output preservation, image output discard, error output discard, kernel metadata, malformed notebook JSON, empty cells, **Document contract assertion** (`source_path` in metadata) |
-| `tests/unit/test_markdown_splitter.py` | Unit | Heading-based splitting, code block protection, table protection, oversized protected region fallback, heading attribution, cell boundary `---` splitting, empty input |
-| `tests/unit/test_image_utils.py` | Unit | Local image copy, remote URL passthrough, missing image graceful degradation, placeholder format |
-| `tests/integration/test_md_notebook_ingestion.py` | Integration | End-to-end: md/ipynb → pipeline → ChromaDB → retrieval verification |
+| `tests/unit/test_loader_factory.py` | Unit | Extension routing, unknown ext error, register/override, kwargs passthrough |
+| `tests/unit/test_markdown_loader.py` | Unit | Frontmatter parsing (valid/malformed/missing), title extraction fallback chain, extension validation, empty file, Document contract (`source_path` in metadata), reserved key guard |
+| `tests/unit/test_source_code_loader.py` | Unit | C++/Python language detection, extension validation, line_count, filename metadata, encoding errors, Document contract |
+| `tests/unit/test_ingest_document_tool.py` | Unit | Handler success (mock pipeline), file not found error, tool schema validation, register_tool |
+| `tests/unit/test_pipeline_loader_selection.py` | Unit | Auto-select PDF/MD/source loader, unsupported extension error |
 
-**Fixtures:**
+### Phase 2
 
-- `tests/fixtures/sample_note.md` — Obsidian-style with frontmatter, headings, code block, image ref, table
-- `tests/fixtures/sample_notebook.ipynb` — Mixed cells: markdown + code with text output + code with image output + raw
-- `tests/fixtures/markdown_chunks.json` — Expected chunking results for MarkdownSplitter
+| Test File | Type | Coverage |
+|-----------|------|----------|
+| `tests/unit/test_notebook_loader.py` | Unit | Cell type conversion, text output, image discard, kernel metadata, malformed JSON, Document contract |
+| `tests/unit/test_markdown_splitter.py` | Unit | Heading splitting, code block protection, table protection, oversized chunk fallback |
+| `tests/integration/test_md_notebook_ingestion.py` | Integration | End-to-end: md/ipynb → pipeline → ChromaDB → retrieval |
 
 ## 6. Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Large notebook (100+ cells) produces huge Document.text | Memory spike, slow splitting | Log warning if cell_count > 50; consider streaming in future |
-| Protected region placeholder collision with actual text | Corrupted chunks | Use UUID-based placeholder format: `<<<PROTECTED_{uuid}>>>` |
-| Notebook nbformat v3 or older | Parse failure | Check `nbformat` (major version) field: `if notebook_json.get("nbformat", 0) != 4: raise ValueError(...)`. Do NOT check `nbformat_minor` — minor versions 0–3 within v4 are valid |
-| Frontmatter YAML injection (malicious content) | Security | `yaml.safe_load` only (no `yaml.load`), no code execution |
-| Image path traversal (`![](../../etc/passwd)`) | Security | Validate resolved path is under document's parent directory or `image_storage_dir` |
+| Frontmatter key overwrites reserved metadata | Data corruption | Guard: skip `source_path`, `doc_type`, `doc_hash` with warning |
+| Frontmatter YAML injection | Security | `yaml.safe_load` only (no `yaml.load`), no code execution |
+| Large source files (10k+ lines) | Slow splitting, huge chunks | Log warning; RecursiveSplitter handles this reasonably |
+| `ingest_document` MCP tool abuse (rapid calls) | Resource exhaustion | Existing rate limiter (Phase J) applies to all MCP tools |
+| Source code encoding issues | Garbled text | `errors="replace"` in read_text prevents crashes |
 
-## 7. Future Extensions (Out of Scope)
+## 7. Phase 2: NotebookLoader + MarkdownSplitter (Deferred)
 
+Retained from v1 design, to be implemented after Phase 1 is stable:
+
+- **NotebookLoader**: nbformat v4 → cell-aware Markdown conversion, `\n\n---\n\n`
+  cell boundaries, text output preserved, image output discarded
+- **MarkdownSplitter**: heading hierarchy separators (`# > ## > ### > \n\n > \n`),
+  protected regions (fenced code blocks, tables), UUID-based placeholders,
+  start-of-string `\n` prepend, `**kwargs` compatibility with SplitterFactory
+
+Full details in v1 spec sections 3.4 and 3.5 (preserved in git history).
+
+## 8. Future Extensions (Out of Scope)
+
+- Markdown/Notebook image extraction (`![alt](path)` → `[IMAGE: {id}]` → ImageCaptioner)
+- `_image_utils.py` shared image processing module
 - `.docx` / `.html` loader — same LoaderFactory pattern, zero pipeline changes
 - Obsidian wiki link resolution (`[[page]]` → target content inline)
-- Notebook image output captioning via VisionLLM
-- HTML table protection in MarkdownSplitter (`<table>...</table>` in notebook markdown cells)
+- HTML table protection in MarkdownSplitter
 - Semantic splitter (embedding-based boundary detection)

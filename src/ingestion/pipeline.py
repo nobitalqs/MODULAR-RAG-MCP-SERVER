@@ -135,9 +135,16 @@ class IngestionPipeline:
         )
 
         # Stage 2: Loader
+        table_extraction = None
+        formula_extraction = None
+        if settings.ingestion:
+            table_extraction = settings.ingestion.table_extraction
+            formula_extraction = settings.ingestion.formula_extraction
         self.loader = PdfLoader(
             extract_images=True,
             image_storage_dir="data/images",
+            table_extraction=table_extraction,
+            formula_extraction=formula_extraction,
         )
 
         # Stage 3: Chunking — use SplitterFactory to create from settings
@@ -210,8 +217,11 @@ class IngestionPipeline:
     def _create_vision_llm(settings: Settings):
         """Create vision LLM from settings.  Returns None on failure."""
         try:
+            from src.libs.llm.openai_vision_llm import OpenAIVisionLLM
+
             factory = LLMFactory()
             factory.register_vision_provider("azure", AzureVisionLLM)
+            factory.register_vision_provider("openai", OpenAIVisionLLM)
             return factory.create_vision_llm_from_settings(settings.vision_llm)
         except Exception:
             logger.warning(

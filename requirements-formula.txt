@@ -1,0 +1,4 @@
+# Optional dependency for formula extraction (K3).
+# pix2tex pulls PyTorch (~700MB-2GB), so it is kept separate from base requirements.
+# Install with: pip install -r requirements-formula.txt
+pix2tex~=0.1.2

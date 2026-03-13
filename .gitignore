@@ -131,3 +131,4 @@ tests/fixtures/sample_documents/*.pdf
 .env.local
 .env.*.local
 secrets.yaml
+eval_report.json

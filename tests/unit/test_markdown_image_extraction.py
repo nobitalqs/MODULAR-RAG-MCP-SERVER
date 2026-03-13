@@ -80,3 +80,45 @@ class TestGenerateImageId:
         id1 = MarkdownLoader._generate_image_id("aaaa0000", 1)
         id2 = MarkdownLoader._generate_image_id("bbbb1111", 1)
         assert id1 != id2
+
+
+class TestExtractImagesUrl:
+    """URL images should be preserved as-is."""
+
+    def test_url_image_preserved(self, tmp_path, image_dir):
+        md = tmp_path / "doc.md"
+        md.write_text("![logo](https://example.com/logo.png)\n")
+
+        loader = MarkdownLoader(extract_images=True, image_storage_dir=str(image_dir))
+        doc = loader.load(md)
+
+        assert "![logo](https://example.com/logo.png)" in doc.text
+        assert "images" not in doc.metadata
+
+    def test_http_url_also_preserved(self, tmp_path, image_dir):
+        md = tmp_path / "doc.md"
+        md.write_text("![pic](http://example.com/pic.jpg)\n")
+
+        loader = MarkdownLoader(extract_images=True, image_storage_dir=str(image_dir))
+        doc = loader.load(md)
+
+        assert "![pic](http://example.com/pic.jpg)" in doc.text
+        assert "images" not in doc.metadata
+
+
+class TestExtractImagesMissing:
+    """Missing local images should be preserved with warning."""
+
+    def test_missing_image_preserved(self, tmp_path, image_dir, caplog):
+        md = tmp_path / "doc.md"
+        md.write_text("![chart](./nonexistent.png)\n")
+
+        loader = MarkdownLoader(extract_images=True, image_storage_dir=str(image_dir))
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            doc = loader.load(md)
+
+        assert "![chart](./nonexistent.png)" in doc.text
+        assert "images" not in doc.metadata
+        assert "not found" in caplog.text.lower()

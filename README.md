@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
 [![MCP Protocol](https://img.shields.io/badge/MCP-Compatible-8A2BE2?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAyQzYuNDggMiAyIDYuNDggMiAxMnM0LjQ4IDEwIDEwIDEwIDEwLTQuNDggMTAtMTBTMTcuNTIgMiAxMiAyem0wIDE4Yy00LjQxIDAtOC0zLjU5LTgtOHMzLjU5LTggOC04IDggMy41OSA4IDgtMy41OSA4LTggNHoiLz48L3N2Zz4=)](https://modelcontextprotocol.io)
-[![Tests](https://img.shields.io/badge/Tests-1683%20passed-success?logo=pytest&logoColor=white)](tests/)
+[![Tests](https://img.shields.io/badge/Tests-1696%20passed-success?logo=pytest&logoColor=white)](tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-%E2%89%A580%25-success)](tests/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -32,7 +32,7 @@ Zero-code component switching. Full-pipeline observability. Plug into Copilot, C
 
 ## 📖 Overview
 
-Modular RAG MCP Server is a **10-phase, 78-task** engineering project that implements a complete RAG pipeline — from document ingestion to hybrid search to LLM generation — all exposed via the [Model Context Protocol](https://modelcontextprotocol.io).
+Modular RAG MCP Server is an **11-phase, 83-task** engineering project that implements a complete RAG pipeline — from document ingestion to hybrid search to LLM generation — all exposed via the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ### Why This Project?
 
@@ -47,12 +47,13 @@ Modular RAG MCP Server is a **10-phase, 78-task** engineering project that imple
 ### Core Highlights
 
 - **Hybrid Retrieval** — BM25 sparse + dense embedding search, fused with Reciprocal Rank Fusion (RRF), then precision-refined with cross-encoder / LLM reranking
+- **Adaptive Retrieval** — confidence-based score threshold with automatic top_k expansion when results are insufficient
 - **10 Pluggable Component Families** — LLM, Embedding, Splitter, VectorStore, Reranker, Evaluator, Cache, RateLimiter, QueryRewriter, Memory — all swappable via `settings.yaml`
 - **MCP Server** — JSON-RPC over stdio, 4 tools (`query_knowledge_hub`, `list_collections`, `get_document_summary`, `delete_document`)
 - **6-Page Streamlit Dashboard** — system overview, data browser, ingestion manager, query traces, ingestion traces, evaluation panel
-- **Multimodal Ingestion** — PDF parsing with automatic image captioning (Vision LLM) embedded into chunk text
+- **Multimodal Ingestion** — PDF parsing with table extraction (PyMuPDF), formula OCR (pix2tex), and automatic image captioning (Vision LLM)
 - **Advanced Features** — conversation memory, query rewriting (LLM / HyDE), circuit breaker, provider failover chain, embedding cache, rate limiting
-- **1683 Tests** — unit, integration, E2E, contract tests, and golden test set recall regression
+- **1696 Tests** — unit, integration, E2E, contract tests, and golden test set recall regression
 
 ## 🏗 Architecture
 
@@ -85,6 +86,33 @@ Modular RAG MCP Server is a **10-phase, 78-task** engineering project that imple
 | **Dual Storage** | ChromaDB + BM25 pickle index | Dense semantic + sparse keyword retrieval |
 | **Circuit Breaker** | External API calls | Three-state protection (CLOSED → OPEN → HALF_OPEN) |
 
+## 🎛 Default Configuration
+
+The default `settings.yaml` ships with a fully integrated OpenAI-based setup:
+
+| Feature | Config | Status |
+|:--------|:-------|:------:|
+| **LLM** | OpenAI / gpt-4o-mini | ON |
+| **Embedding** | OpenAI / text-embedding-3-small (1536d) | ON |
+| **Vision LLM** | OpenAI / gpt-4o | ON |
+| **Dense Retrieval** | top_k=20, weight=1.0 | ON |
+| **Sparse Retrieval (BM25)** | top_k=20, weight=0.4 | ON |
+| **RRF Fusion** | k=60, fusion_top_k=10 | ON |
+| **Adaptive Retrieval** | score threshold + auto expand | ON |
+| **Rerank** | cross-encoder / MiniLM-L-6-v2 | ON |
+| **Table Extraction** | PyMuPDF find_tables → Markdown | ON |
+| **Formula Extraction** | pix2tex LaTeX OCR | ON |
+| **Query Rewriting** | LLM, max_rewrites=3 | ON |
+| **Session Memory** | In-memory, 10-turn sliding window | ON |
+| **Embedding Cache** | In-memory LRU, TTL=3600s | ON |
+| **Evaluation** | Ragas (faithfulness, relevancy, precision) | ON |
+| **Observability** | Structured logging + JSONL tracing | ON |
+| **Dashboard** | Streamlit :8501, 6 pages | ON |
+| **MCP Server** | 4 tools (query / list / summary / delete) | ON |
+| Rate Limiter | — | OFF |
+| Query Router | — | OFF |
+| Circuit Breaker | — | OFF |
+
 ## 📊 Evaluation
 
 The project includes a **dual evaluation system** — deterministic IR metrics for fast regression checks, and LLM-as-Judge metrics for semantic quality assessment.
@@ -98,7 +126,7 @@ The project includes a **dual evaluation system** — deterministic IR metrics f
 
 ### Golden Test Set
 
-A curated benchmark of **16 queries across 4 categories**, evaluated against 3 indexed documents (417 chunks total):
+A curated benchmark of **16 queries across 4 categories**, evaluated against 3 indexed documents (436 chunks total):
 
 | Category | Queries | Description |
 |:---------|:-------:|:------------|
@@ -113,10 +141,10 @@ A curated benchmark of **16 queries across 4 categories**, evaluated against 3 i
 
 | Type | Count | Description |
 |:-----|------:|:------------|
-| Unit Tests | ~1500 | Factory, provider, contract, component tests |
-| Integration Tests | ~100 | Cross-component, ChromaDB roundtrip, pipeline tests |
-| E2E Tests | ~80 | MCP client, dashboard smoke, ingestion, query, recall |
-| **Total** | **1683** | All passing |
+| Unit Tests | 1665 | Factory, provider, contract, component tests |
+| Integration Tests | ~16 | Cross-component, ChromaDB roundtrip, pipeline tests |
+| E2E Tests | ~15 | MCP client, dashboard smoke, ingestion, query, recall |
+| **Total** | **1696** | All passing |
 
 ## 🚀 Quick Start
 
@@ -303,7 +331,7 @@ MIT
 
 ## 📖 项目简介
 
-Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目，实现了完整的 RAG 流水线 — 从文档摄取到混合检索到 LLM 生成 — 全部通过 [Model Context Protocol](https://modelcontextprotocol.io) 对外暴露。
+Modular RAG MCP Server 是一个 **11 阶段、83 项任务** 的工程化项目，实现了完整的 RAG 流水线 — 从文档摄取到混合检索到 LLM 生成 — 全部通过 [Model Context Protocol](https://modelcontextprotocol.io) 对外暴露。
 
 ### 为什么做这个项目？
 
@@ -318,12 +346,40 @@ Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目
 ### 核心亮点
 
 - **混合检索** — BM25 稀疏 + 稠密向量检索，RRF 融合后经 Cross-encoder / LLM 精排
+- **自适应检索** — 基于置信度的分数阈值，结果不足时自动扩展 top_k
 - **10 大可插拔组件族** — LLM、Embedding、Splitter、VectorStore、Reranker、Evaluator、Cache、RateLimiter、QueryRewriter、Memory — 全部通过 `settings.yaml` 切换
 - **MCP 服务器** — JSON-RPC over stdio，提供 4 个工具（`query_knowledge_hub`、`list_collections`、`get_document_summary`、`delete_document`）
 - **6 页 Streamlit 仪表盘** — 系统总览、数据浏览、摄取管理、查询追踪、摄取追踪、评估面板
-- **多模态摄取** — PDF 解析 + Vision LLM 自动图片描述，嵌入 chunk 文本
+- **多模态摄取** — PDF 解析 + 表格提取（PyMuPDF）+ 公式 OCR（pix2tex）+ Vision LLM 自动图片描述
 - **高级功能** — 会话记忆、查询改写（LLM / HyDE）、熔断器、Provider 级联容错、Embedding 缓存、令牌桶限流
-- **1683 个测试** — 单元、集成、E2E、契约测试 + Golden Test Set 召回回归
+- **1696 个测试** — 单元、集成、E2E、契约测试 + Golden Test Set 召回回归
+
+## 🎛 默认配置
+
+默认 `settings.yaml` 提供完整的 OpenAI 集成方案：
+
+| 功能 | 配置 | 状态 |
+|:-----|:-----|:----:|
+| **LLM** | OpenAI / gpt-4o-mini | 开启 |
+| **Embedding** | OpenAI / text-embedding-3-small (1536d) | 开启 |
+| **Vision LLM** | OpenAI / gpt-4o | 开启 |
+| **Dense 检索** | top_k=20, weight=1.0 | 开启 |
+| **Sparse 检索 (BM25)** | top_k=20, weight=0.4 | 开启 |
+| **RRF 融合** | k=60, fusion_top_k=10 | 开启 |
+| **自适应检索** | 分数阈值 + 自动扩展 top_k | 开启 |
+| **Rerank 精排** | cross-encoder / MiniLM-L-6-v2 | 开启 |
+| **表格提取** | PyMuPDF find_tables → Markdown | 开启 |
+| **公式提取** | pix2tex LaTeX OCR | 开启 |
+| **查询改写** | LLM, max_rewrites=3 | 开启 |
+| **会话记忆** | 内存, 10 轮滑动窗口 | 开启 |
+| **Embedding 缓存** | 内存 LRU, TTL=3600s | 开启 |
+| **评估** | Ragas (faithfulness, relevancy, precision) | 开启 |
+| **可观测性** | 结构化日志 + JSONL 链路追踪 | 开启 |
+| **仪表盘** | Streamlit :8501, 6 页面 | 开启 |
+| **MCP 服务器** | 4 工具 (query / list / summary / delete) | 开启 |
+| 限流器 | — | 关闭 |
+| 查询路由 | — | 关闭 |
+| 熔断器 | — | 关闭 |
 
 ## 📊 评估体系
 
@@ -338,7 +394,7 @@ Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目
 
 ### Golden Test Set
 
-精选 **16 条查询，4 个类别**，针对 3 份索引文档（共 417 chunks）进行评估：
+精选 **16 条查询，4 个类别**，针对 3 份索引文档（共 436 chunks）进行评估：
 
 | 类别 | 数量 | 说明 |
 |:-----|:----:|:-----|
@@ -351,10 +407,10 @@ Modular RAG MCP Server 是一个 **10 阶段、78 项任务** 的工程化项目
 
 | 类型 | 数量 | 说明 |
 |:-----|-----:|:-----|
-| 单元测试 | ~1500 | Factory、Provider、契约、组件测试 |
-| 集成测试 | ~100 | 跨组件、ChromaDB 往返、管线测试 |
-| E2E 测试 | ~80 | MCP 客户端、仪表盘冒烟、摄取、查询、召回 |
-| **合计** | **1683** | 全部通过 |
+| 单元测试 | 1665 | Factory、Provider、契约、组件测试 |
+| 集成测试 | ~16 | 跨组件、ChromaDB 往返、管线测试 |
+| E2E 测试 | ~15 | MCP 客户端、仪表盘冒烟、摄取、查询、召回 |
+| **合计** | **1696** | 全部通过 |
 
 ## 🚀 快速开始
 

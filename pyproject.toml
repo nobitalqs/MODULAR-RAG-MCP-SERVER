@@ -22,14 +22,36 @@ classifiers = [
 
 dependencies = [
     "pyyaml>=6.0",
-    "langchain-text-splitters>=1.0.0",
-    "chromadb>=1.0.0",
-    "openai>=2.0.0",
     "python-dotenv>=1.0.0",
+    "httpx>=0.24.0",
+    "openai>=2.0.0",
+    "chromadb>=1.0.0",
+    "langchain-text-splitters>=1.0.0",
+    "pymupdf>=1.20.0",
     "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
+dashboard = [
+    "streamlit>=1.30.0",
+]
+redis = [
+    "redis>=5.0.0",
+]
+evaluation = [
+    "ragas>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "datasets>=2.0.0",
+]
+reranking = [
+    "sentence-transformers>=2.0.0",
+]
+formula = [
+    "pix2tex~=0.1.2",
+]
+all = [
+    "modular-rag-mcp-server[dashboard,redis,evaluation,reranking]",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",

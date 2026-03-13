@@ -3,12 +3,12 @@
 Extracts:
 - YAML frontmatter (flat-merged into metadata, reserved keys protected)
 - Title via fallback chain: frontmatter → first ``# heading`` → filename
-- Full Markdown body text (images preserved as-is)
+- Local image references (copied to storage, replaced with ``[IMAGE: id]``)
 
 Design:
 - ``**kwargs`` in ``__init__`` for LoaderFactory compatibility
-- No image processing — ``![alt](path)`` kept verbatim
-- Graceful degradation on malformed frontmatter (logged, skipped)
+- Image extraction: local files copied, URLs skipped, missing files logged
+- Graceful degradation on malformed frontmatter or image errors (logged, skipped)
 """
 
 from __future__ import annotations
@@ -39,6 +39,9 @@ _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 # Regex: ATX heading ``# Title``
 _HEADING_RE = re.compile(r"^#\s+(.+)", re.MULTILINE)
+
+# Regex: Markdown image reference ![alt](path)
+_IMAGE_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 
 # Accepted extensions
 _VALID_EXTENSIONS: frozenset[str] = frozenset({".md", ".markdown"})
@@ -87,12 +90,28 @@ class MarkdownLoader(BaseLoader):
         # Parse frontmatter
         frontmatter, body = self._split_frontmatter(raw)
 
+        # Extract images (with graceful degradation)
+        images_metadata: list[dict[str, Any]] = []
+        if self.extract_images:
+            try:
+                body, images_metadata = self._extract_images(body, path, doc_hash)
+            except Exception as e:
+                logger.warning(
+                    "Image extraction failed for %s, continuing with text-only: %s",
+                    path,
+                    e,
+                )
+
         # Build metadata (loader-managed keys first)
         metadata: dict[str, Any] = {
             "source_path": str(path),
             "doc_type": "markdown",
             "doc_hash": doc_hash,
         }
+
+        # Add images metadata if any
+        if images_metadata:
+            metadata["images"] = images_metadata
 
         # Flat-merge frontmatter, protecting reserved keys
         if frontmatter:
@@ -115,6 +134,101 @@ class MarkdownLoader(BaseLoader):
         return Document(id=doc_id, text=body, metadata=metadata)
 
     # ── internal helpers ──────────────────────────────────────────────
+
+    def _extract_images(
+        self,
+        body: str,
+        md_path: Path,
+        doc_hash: str,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Extract local image references and copy to storage.
+
+        Scans for ``![alt](path)`` patterns, copies local files to
+        ``image_storage_dir/{doc_hash}/``, and replaces with ``[IMAGE: id]``.
+
+        Args:
+            body: Markdown body text (after frontmatter removal).
+            md_path: Resolved path to the source Markdown file.
+            doc_hash: Document hash for image directory and ID generation.
+
+        Returns:
+            Tuple of (modified_body, images_metadata_list).
+        """
+        matches = list(_IMAGE_MD_RE.finditer(body))
+        if not matches:
+            return body, []
+
+        md_dir = md_path.parent
+        image_dir = self.image_storage_dir / doc_hash
+        images_metadata: list[dict[str, Any]] = []
+        sequence = 0
+
+        # Collect replacements: (start, end, replacement_str)
+        replacements: list[tuple[int, int, str]] = []
+
+        for match in matches:
+            alt_text = match.group(1)
+            ref = match.group(2).strip()
+
+            # Skip URLs and non-file URI schemes
+            if ref.startswith(("http://", "https://", "ftp://", "data:", "//")):
+                continue
+
+            # Resolve path
+            if Path(ref).is_absolute():
+                resolved = Path(ref).resolve()
+            else:
+                resolved = (md_dir / ref).resolve()
+
+            # Skip if file doesn't exist
+            if not resolved.is_file():
+                logger.warning(
+                    "Image file not found: %s (referenced in %s)",
+                    resolved,
+                    md_path.name,
+                )
+                continue
+
+            # Copy image
+            try:
+                image_dir.mkdir(parents=True, exist_ok=True)
+                image_id = self._generate_image_id(doc_hash, sequence + 1)
+                dest_filename = f"{image_id}{resolved.suffix}"
+                dest_path = image_dir / dest_filename
+                shutil.copy2(resolved, dest_path)
+                sequence += 1  # only increment after successful copy
+            except Exception as e:
+                logger.warning(
+                    "Failed to copy image %s: %s",
+                    resolved,
+                    e,
+                )
+                continue
+
+            # Build path for metadata (relative to cwd, fallback absolute)
+            try:
+                stored_path = str(dest_path.relative_to(Path.cwd()))
+            except ValueError:
+                stored_path = str(dest_path.absolute())
+
+            # Record metadata
+            images_metadata.append({
+                "id": image_id,
+                "path": stored_path,
+                "alt_text": alt_text,
+                "original_ref": ref,
+            })
+
+            # Schedule replacement (will apply in reverse order)
+            placeholder = f"[IMAGE: {image_id}]"
+            replacements.append((match.start(), match.end(), placeholder))
+
+        # Apply replacements in reverse order to preserve offsets
+        new_body = body
+        for start, end, placeholder in reversed(replacements):
+            new_body = new_body[:start] + placeholder + new_body[end:]
+
+        return new_body, images_metadata
 
     @staticmethod
     def _split_frontmatter(raw: str) -> tuple[dict[str, Any] | None, str]:

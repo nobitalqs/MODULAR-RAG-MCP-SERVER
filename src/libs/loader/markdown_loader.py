@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -50,9 +51,14 @@ class MarkdownLoader(BaseLoader):
         **kwargs: Ignored — present for LoaderFactory compatibility.
     """
 
-    def __init__(self, **kwargs: Any) -> None:
-        # kwargs absorbed for factory compatibility
-        pass
+    def __init__(
+        self,
+        extract_images: bool = True,
+        image_storage_dir: str | Path = "data/images",
+        **kwargs: Any,
+    ) -> None:
+        self.extract_images = extract_images
+        self.image_storage_dir = Path(image_storage_dir)
 
     def load(self, file_path: str | Path) -> Document:
         """Load and parse a Markdown file.
@@ -75,7 +81,7 @@ class MarkdownLoader(BaseLoader):
             )
 
         raw = path.read_text(encoding="utf-8")
-        doc_hash = self._compute_hash(raw)
+        doc_hash = self._compute_file_hash(path)
         doc_id = f"doc_{doc_hash[:16]}"
 
         # Parse frontmatter
@@ -149,3 +155,12 @@ class MarkdownLoader(BaseLoader):
     def _compute_hash(content: str) -> str:
         """Compute SHA256 hex digest of text content."""
         return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _compute_file_hash(file_path: Path) -> str:
+        """Compute SHA256 hex digest of raw file bytes."""
+        sha256 = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                sha256.update(chunk)
+        return sha256.hexdigest()

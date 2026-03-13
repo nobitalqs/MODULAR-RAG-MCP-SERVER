@@ -205,9 +205,10 @@ class TestMarkdownLoaderValidation:
 
 
 class TestMarkdownLoaderImages:
-    """Image references are preserved as-is."""
+    """Image references should be preserved when extract_images is disabled."""
 
-    def test_images_kept_as_is(self, loader, md_with_images):
+    def test_images_kept_as_is(self, md_with_images):
+        loader = MarkdownLoader(extract_images=False)
         doc = loader.load(md_with_images)
         assert "![alt text](image.png)" in doc.text
         assert "![another](http://example.com/pic.jpg)" in doc.text

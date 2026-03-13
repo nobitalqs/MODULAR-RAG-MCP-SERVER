@@ -195,7 +195,7 @@ class RagasEvaluator(BaseEvaluator):
         """Build Ragas LLM and Embedding wrappers from project settings.
 
         Priority: evaluation.llm/embedding (dedicated) > settings.llm/embedding (global).
-        This allows the main pipeline to use Ollama while Ragas uses OpenAI.
+        Allows separate LLM config for evaluation metrics if needed.
 
         Returns:
             Tuple of (llm_wrapper, embeddings_wrapper).

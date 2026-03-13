@@ -40,7 +40,7 @@ class ConversationMemory:
         store: BaseMemoryStore,
         max_turns: int,
         summarize_threshold: int,
-        summarize_enabled: bool = False,
+        summarize_enabled: bool = True,
         llm: BaseLLM | None = None,
     ) -> None:
         self._store = store

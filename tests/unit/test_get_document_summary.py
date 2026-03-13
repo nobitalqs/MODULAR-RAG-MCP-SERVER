@@ -234,7 +234,7 @@ class TestGetDocumentSummaryConfig:
         """Test default configuration values."""
         config = GetDocumentSummaryConfig()
         assert config.persist_directory == "./data/db/chroma"
-        assert config.default_collection == "knowledge_hub"
+        assert config.default_collection == "default"
         assert config.summary_max_length == 500
 
     def test_config_custom_values(self) -> None:
@@ -342,7 +342,7 @@ class TestConfigProperty:
         config = tool.config
 
         assert config.persist_directory == "./data/db/chroma"
-        assert config.default_collection == "knowledge_hub"
+        assert config.default_collection == "default"
 
 
 # =============================================================================

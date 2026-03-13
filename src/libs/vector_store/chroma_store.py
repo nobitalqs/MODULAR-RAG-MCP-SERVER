@@ -35,7 +35,7 @@ class ChromaStore(BaseVectorStore):
         persist_directory: Directory for ChromaDB persistence.
             Defaults to ``./data/db/chroma``.
         collection_name: Name of the collection.
-            Defaults to ``knowledge_hub``.
+            Defaults to ``default``.
         **kwargs: Additional provider-specific parameters (ignored).
 
     Raises:
@@ -45,7 +45,7 @@ class ChromaStore(BaseVectorStore):
     def __init__(
         self,
         persist_directory: str = "./data/db/chroma",
-        collection_name: str = "knowledge_hub",
+        collection_name: str = "default",
         **kwargs: Any,
     ) -> None:
         if not CHROMADB_AVAILABLE:

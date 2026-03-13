@@ -103,7 +103,7 @@ class GetDocumentSummaryConfig:
     """
 
     persist_directory: str = "./data/db/chroma"
-    default_collection: str = "knowledge_hub"
+    default_collection: str = "default"
     summary_max_length: int = 500
 
 
@@ -173,11 +173,11 @@ class GetDocumentSummaryTool:
                 default_collection = getattr(
                     self.settings.vector_store,
                     'collection_name',
-                    'knowledge_hub',
+                    'default',
                 )
             except AttributeError:
                 persist_dir = './data/db/chroma'
-                default_collection = 'knowledge_hub'
+                default_collection = 'default'
 
             self._config = GetDocumentSummaryConfig(
                 persist_directory=persist_dir,

@@ -354,4 +354,5 @@ path resolution strategy and eliminates CWD dependency.
 - `.docx` / `.html` loader — same LoaderFactory pattern, zero pipeline changes
 - Obsidian wiki link resolution (`[[page]]` → target content inline)
 - Notebook image output captioning via VisionLLM
+- HTML table protection in MarkdownSplitter (`<table>...</table>` in notebook markdown cells)
 - Semantic splitter (embedding-based boundary detection)

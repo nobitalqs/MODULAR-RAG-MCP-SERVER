@@ -2433,12 +2433,12 @@ memory:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| L1 | LoaderFactory（扩展名路由 + Registry 模式） | [ ] | - | LoaderFactory + register_provider + create_for_file + kwargs passthrough |
-| L2 | MarkdownLoader（frontmatter 扁平合并 + title 提取） | [ ] | - | YAML frontmatter flat merge（保护 reserved keys）+ title 提取链，暂不处理图片 |
-| L3 | SourceCodeLoader（语言检测 + raw text） | [ ] | - | _LANGUAGE_MAP(.C/.cpp/.py/.h) + line_count + filename metadata |
-| L4 | Pipeline 集成（Factory 替换硬编码 + ChunkRefiner doc_type） | [ ] | - | pipeline.py 用 LoaderFactory + ChunkRefiner 按 doc_type 分支 + ingest.py 扩展名列表 |
-| L5 | ingest_document MCP Tool | [ ] | - | MCP tool handler + asyncio.to_thread + register in protocol_handler |
-| L6 | Phase 1 单元测试 | [ ] | - | test_loader_factory + test_markdown_loader + test_source_code_loader + test_ingest_document_tool + test_pipeline_loader_selection |
+| L1 | LoaderFactory（扩展名路由 + Registry 模式） | [x] | 2026-03-13 | LoaderFactory + register_provider + create_for_file + kwargs passthrough |
+| L2 | MarkdownLoader（frontmatter 扁平合并 + title 提取） | [x] | 2026-03-13 | YAML frontmatter flat merge（保护 reserved keys）+ title 提取链，暂不处理图片 |
+| L3 | SourceCodeLoader（语言检测 + raw text） | [x] | 2026-03-13 | _LANGUAGE_MAP(.C/.cpp/.py/.h) + line_count + filename metadata |
+| L4 | Pipeline 集成（Factory 替换硬编码 + ChunkRefiner doc_type） | [x] | 2026-03-13 | pipeline.py 用 LoaderFactory + ChunkRefiner 按 doc_type 分支 + ingest.py 扩展名列表 |
+| L5 | ingest_document MCP Tool | [x] | 2026-03-13 | MCP tool handler + asyncio.to_thread + register in protocol_handler |
+| L6 | Phase 1 单元测试 | [x] | 2026-03-13 | test_loader_factory + test_markdown_loader + test_source_code_loader + test_ingest_document_tool + test_pipeline_loader_selection |
 
 **Phase 2（后续迭代）：**
 
@@ -2467,8 +2467,8 @@ memory:
 | 阶段 I | 5 | 5 | 100% |
 | 阶段 J | 9 | 9 | 100% |
 | 阶段 K | 5+1★ | 5 | 100% |
-| 阶段 L | 6+3 | 0 | 0% |
-| **总计** | **92** | **83** | **90%** |
+| 阶段 L | 6+3 | 6 | 67% |
+| **总计** | **92** | **89** | **97%** |
 
 
 ---

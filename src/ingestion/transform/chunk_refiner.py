@@ -120,7 +120,8 @@ class ChunkRefiner(BaseTransform):
 
         for chunk in chunks:
             try:
-                rule_text = self._rule_based_refine(chunk.text)
+                doc_type = chunk.metadata.get("doc_type", "pdf")
+                rule_text = self._rule_based_refine(chunk.text, doc_type=doc_type)
 
                 if self.use_llm and self.llm:
                     llm_text = self._llm_refine(rule_text, trace)
@@ -168,14 +169,20 @@ class ChunkRefiner(BaseTransform):
 
     # ── rule-based cleaning ───────────────────────────────────────────
 
-    def _rule_based_refine(self, text: str) -> str:
+    def _rule_based_refine(self, text: str, doc_type: str = "pdf") -> str:
         """Apply deterministic regex-based cleaning.
+
+        Args:
+            text: Raw chunk text.
+            doc_type: Document type (e.g. "pdf", "markdown", "source_code").
+                PDF-only rules (header/footer removal, separator removal) are
+                skipped for non-PDF types to preserve Markdown/code formatting.
 
         Order of operations matters:
             1. Early return for None / empty
             2. Extract code blocks (protect internal formatting)
-            3. Remove page header / footer lines
-            4. Remove separator-only lines
+            3. (PDF only) Remove page header / footer lines
+            4. (PDF only) Remove separator-only lines
             5. Remove HTML comments
             6. Remove HTML tags (preserve inner content)
             7. Collapse multi-space runs
@@ -198,11 +205,10 @@ class ChunkRefiner(BaseTransform):
 
         text = _CODE_BLOCK_RE.sub(_extract, text)
 
-        # 2. Remove page header / footer lines
-        text = _PAGE_HEADER_FOOTER_RE.sub("", text)
-
-        # 3. Remove separator-only lines
-        text = _SEPARATOR_LINE_RE.sub("", text)
+        # 2-3. PDF-only: Remove page header/footer lines and separator lines
+        if doc_type == "pdf":
+            text = _PAGE_HEADER_FOOTER_RE.sub("", text)
+            text = _SEPARATOR_LINE_RE.sub("", text)
 
         # 4. Remove HTML comments
         text = _HTML_COMMENT_RE.sub("", text)

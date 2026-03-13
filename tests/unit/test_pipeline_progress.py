@@ -34,14 +34,25 @@ def _make_fake_pipeline() -> object:
     fp.integrity_checker = MagicMock()
     fp.integrity_checker.compute_sha256.return_value = "abc123"
     fp.integrity_checker.should_skip.return_value = False
+    fp.integrity_checker.lookup_by_path.return_value = None
 
-    # Stage 2: loader
-    fp.loader = MagicMock()
-    fp.loader.load.return_value = Document(
+    # Document lifecycle manager
+    fp.document_manager = MagicMock()
+
+    # Stage 2: loader factory
+    mock_loader = MagicMock()
+    mock_loader.load.return_value = Document(
         id="doc1",
         text="Hello world. " * 50,
         metadata={"source_path": "test.pdf", "images": []},
     )
+    fp.loader_factory = MagicMock()
+    fp.loader_factory.create_for_file.return_value = mock_loader
+    # Keep reference for tests that check loader calls
+    fp._mock_loader = mock_loader
+    # Pipeline reads these for kwargs
+    fp._table_extraction = None
+    fp._formula_extraction = None
 
     # Stage 3: chunker
     chunks = [
@@ -192,8 +203,8 @@ class TestPipelineResult:
         assert result.success is True
         assert result.chunk_count == 0
         assert result.stages["integrity"]["skipped"] is True
-        # Loader should NOT have been called
-        fp.loader.load.assert_not_called()
+        # Loader factory should NOT have been called
+        fp.loader_factory.create_for_file.assert_not_called()
 
     def test_force_bypasses_skip(self) -> None:
         fp = _make_fake_pipeline()
@@ -206,7 +217,7 @@ class TestPipelineResult:
 
     def test_failure_returns_error_result(self) -> None:
         fp = _make_fake_pipeline()
-        fp.loader.load.side_effect = RuntimeError("load failed")
+        fp._mock_loader.load.side_effect = RuntimeError("load failed")
         result = IngestionPipeline.run(fp, "test.pdf")
         assert result.success is False
         assert "load failed" in result.error
@@ -268,7 +279,7 @@ class TestPipelineOrchestration:
         # Create a temporary image file
         img_path = tmp_path / "img_001.png"
         img_path.write_bytes(b"\x89PNG")
-        fp.loader.load.return_value = Document(
+        fp._mock_loader.load.return_value = Document(
             id="doc1",
             text="Hello",
             metadata={
@@ -284,7 +295,7 @@ class TestPipelineOrchestration:
 
     def test_image_registration_skips_missing_files(self) -> None:
         fp = _make_fake_pipeline()
-        fp.loader.load.return_value = Document(
+        fp._mock_loader.load.return_value = Document(
             id="doc1",
             text="Hello",
             metadata={

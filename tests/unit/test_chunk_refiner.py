@@ -313,10 +313,10 @@ class TestAtomicProcessing:
         # Mock _rule_based_refine to fail on specific chunk
         original_method = refiner._rule_based_refine
 
-        def failing_refine(text):
+        def failing_refine(text, doc_type="pdf"):
             if "fail" in text:
                 raise ValueError("Intentional test error")
-            return original_method(text)
+            return original_method(text, doc_type=doc_type)
 
         refiner._rule_based_refine = failing_refine
 

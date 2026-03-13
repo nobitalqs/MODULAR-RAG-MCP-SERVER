@@ -58,8 +58,11 @@ from src.libs.llm import (
 # Stage 1: Integrity
 from src.libs.loader.file_integrity import SQLiteIntegrityChecker
 
-# Stage 2: Loading
+# Stage 2: Loading (factory-based multi-format)
+from src.libs.loader.loader_factory import LoaderFactory
+from src.libs.loader.markdown_loader import MarkdownLoader
 from src.libs.loader.pdf_loader import PdfLoader
+from src.libs.loader.source_code_loader import SourceCodeLoader
 from src.libs.splitter import RecursiveSplitter, SplitterFactory
 from src.libs.vector_store import ChromaStore, VectorStoreFactory
 
@@ -134,18 +137,23 @@ class IngestionPipeline:
             db_path="data/db/file_integrity.db",
         )
 
-        # Stage 2: Loader
-        table_extraction = None
-        formula_extraction = None
+        # Stage 2: Loader factory (multi-format)
+        self._table_extraction = None
+        self._formula_extraction = None
         if settings.ingestion:
-            table_extraction = settings.ingestion.table_extraction
-            formula_extraction = settings.ingestion.formula_extraction
-        self.loader = PdfLoader(
-            extract_images=True,
-            image_storage_dir="data/images",
-            table_extraction=table_extraction,
-            formula_extraction=formula_extraction,
-        )
+            self._table_extraction = settings.ingestion.table_extraction
+            self._formula_extraction = settings.ingestion.formula_extraction
+        self.loader_factory = LoaderFactory()
+        self.loader_factory.register_provider(".pdf", PdfLoader)
+        self.loader_factory.register_provider(".md", MarkdownLoader)
+        self.loader_factory.register_provider(".markdown", MarkdownLoader)
+        self.loader_factory.register_provider(".c", SourceCodeLoader)
+        self.loader_factory.register_provider(".cpp", SourceCodeLoader)
+        self.loader_factory.register_provider(".cxx", SourceCodeLoader)
+        self.loader_factory.register_provider(".cc", SourceCodeLoader)
+        self.loader_factory.register_provider(".h", SourceCodeLoader)
+        self.loader_factory.register_provider(".hxx", SourceCodeLoader)
+        self.loader_factory.register_provider(".py", SourceCodeLoader)
 
         # Stage 3: Chunking — use SplitterFactory to create from settings
         splitter_factory = SplitterFactory()
@@ -337,7 +345,14 @@ class IngestionPipeline:
             # ── Stage 2: Load ───────────────────────────────────────
             _progress("load", 2)
             t0 = time.monotonic()
-            document: Document = self.loader.load(file_path)
+            loader = self.loader_factory.create_for_file(
+                file_path,
+                extract_images=True,
+                image_storage_dir="data/images",
+                table_extraction=self._table_extraction,
+                formula_extraction=self._formula_extraction,
+            )
+            document: Document = loader.load(file_path)
             elapsed = (time.monotonic() - t0) * 1000
 
             image_count = len(document.metadata.get("images", []))

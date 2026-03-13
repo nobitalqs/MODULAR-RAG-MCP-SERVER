@@ -104,7 +104,10 @@ def discover_files(
         ValueError: If a single file has an unsupported extension.
     """
     if extensions is None:
-        extensions = [".pdf"]
+        extensions = [
+            ".pdf", ".md", ".markdown",
+            ".c", ".cpp", ".cxx", ".cc", ".h", ".hxx", ".py",
+        ]
 
     p = Path(path)
 

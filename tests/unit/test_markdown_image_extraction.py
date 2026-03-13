@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -273,3 +274,28 @@ class TestExtractImagesWithFrontmatter:
         # Image extracted
         assert "[IMAGE:" in doc.text
         assert len(doc.metadata["images"]) == 1
+
+
+class TestExtractImagesDegradation:
+    """Graceful degradation when image copy fails."""
+
+    def test_copy_failure_preserves_original(self, tmp_path, image_dir, caplog):
+        img = tmp_path / "pic.png"
+        img.write_bytes(b"\x89PNG" + b"\x00" * 50)
+
+        md = tmp_path / "doc.md"
+        md.write_text("![pic](./pic.png)\n")
+
+        loader = MarkdownLoader(extract_images=True, image_storage_dir=str(image_dir))
+
+        import logging
+        with (
+            patch("src.libs.loader.markdown_loader.shutil.copy2", side_effect=PermissionError("denied")),
+            caplog.at_level(logging.WARNING),
+        ):
+            doc = loader.load(md)
+
+        # Original syntax preserved
+        assert "![pic](./pic.png)" in doc.text
+        assert "images" not in doc.metadata
+        assert "denied" in caplog.text

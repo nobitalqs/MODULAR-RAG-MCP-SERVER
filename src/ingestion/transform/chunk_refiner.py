@@ -122,6 +122,7 @@ class ChunkRefiner(BaseTransform):
             try:
                 doc_type = chunk.metadata.get("doc_type", "pdf")
                 rule_text = self._rule_based_refine(chunk.text, doc_type=doc_type)
+                rule_text = self._inject_source_context(rule_text, chunk.metadata)
 
                 if self.use_llm and self.llm:
                     llm_text = self._llm_refine(rule_text, trace)
@@ -166,6 +167,28 @@ class ChunkRefiner(BaseTransform):
             end_offset=original.end_offset,
             source_ref=original.source_ref,
         )
+
+    # ── source context injection ─────────────────────────────────────
+
+    @staticmethod
+    def _inject_source_context(text: str, metadata: dict[str, Any]) -> str:
+        """Prepend source filename to chunk text for retrieval discoverability.
+
+        Ensures filename keywords (e.g. "DimuonAnalysis") appear in both
+        BM25 and dense search indices, not just in unsearchable metadata.
+
+        Skips injection if:
+        - No filename can be determined
+        - Filename already appears in the text (avoids duplication)
+        """
+        filename = metadata.get("filename") or Path(
+            metadata.get("source_path", "")
+        ).name
+        if not filename:
+            return text
+        if filename in text:
+            return text
+        return f"[Source: {filename}]\n{text}"
 
     # ── rule-based cleaning ───────────────────────────────────────────
 

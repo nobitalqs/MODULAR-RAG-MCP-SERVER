@@ -153,7 +153,8 @@ class TestTransformPipelineRuleOnly:
 
         assert len(result) == 1
         assert result[0].id == sample_chunk.id
-        assert result[0].text == "Sample text with extra spaces\n\nand newlines"
+        assert "[Source: test.pdf]" in result[0].text
+        assert "Sample text with extra spaces\n\nand newlines" in result[0].text
         assert result[0].metadata['refined_by'] == 'rule'
 
     def test_transform_multiple_chunks(self, mock_settings):
@@ -169,9 +170,9 @@ class TestTransformPipelineRuleOnly:
         result = refiner.transform(chunks)
 
         assert len(result) == 3
-        assert result[0].text == "Text with spaces"
-        assert result[1].text == "Another\n\nchunk"
-        assert result[2].text == "Clean text"
+        assert "Text with spaces" in result[0].text
+        assert "Another\n\nchunk" in result[1].text
+        assert "Clean text" in result[2].text
         assert all(r.metadata['refined_by'] == 'rule' for r in result)
 
     def test_transform_empty_list(self, mock_settings):
@@ -335,6 +336,94 @@ class TestAtomicProcessing:
         # Other chunks processed normally
         assert result[0].metadata.get('refined_by') == 'rule'
         assert result[2].metadata.get('refined_by') == 'rule'
+
+
+# Test Source Context Injection
+
+class TestSourceContextInjection:
+    """Test filename injection into chunk text for retrieval discoverability."""
+
+    def test_source_code_filename_injected(self, mock_settings):
+        """Source code chunks should have filename prepended."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="import ROOT\ndf = ROOT.RDataFrame(...)",
+            metadata={
+                "source_path": "/data/tutorials/df102_NanoAODDimuonAnalysis.py",
+                "doc_type": "source_code",
+                "filename": "df102_NanoAODDimuonAnalysis.py",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: df102_NanoAODDimuonAnalysis.py]" in result[0].text
+        assert "import ROOT" in result[0].text
+
+    def test_filename_from_source_path_fallback(self, mock_settings):
+        """When 'filename' key missing, extract from source_path."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="# My Document\n\nContent here",
+            metadata={
+                "source_path": "/docs/architecture_guide.md",
+                "doc_type": "markdown",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: architecture_guide.md]" in result[0].text
+
+    def test_no_duplicate_injection(self, mock_settings):
+        """Don't inject if filename already appears in text."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="# df102_NanoAODDimuonAnalysis.py\nimport ROOT",
+            metadata={
+                "source_path": "/data/df102_NanoAODDimuonAnalysis.py",
+                "doc_type": "source_code",
+                "filename": "df102_NanoAODDimuonAnalysis.py",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        # Should NOT have [Source: ...] since filename already in text
+        assert "[Source:" not in result[0].text
+        assert "df102_NanoAODDimuonAnalysis.py" in result[0].text
+
+    def test_no_injection_when_no_source_path(self, mock_settings):
+        """No injection when source_path is missing or empty."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="Some text",
+            metadata={"source_path": ""},
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source:" not in result[0].text
+
+    def test_pdf_filename_injected(self, mock_settings):
+        """PDF chunks should also get filename injection."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="The attention mechanism allows the model to...",
+            metadata={
+                "source_path": "/papers/attention_is_all_you_need.pdf",
+                "doc_type": "pdf",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: attention_is_all_you_need.pdf]" in result[0].text
 
 
 # Test Configuration

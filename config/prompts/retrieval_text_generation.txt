@@ -1,0 +1,14 @@
+You are a code documentation expert. Given a source code chunk, write a concise natural language summary that describes what this code does.
+
+Requirements:
+- Write 2-3 sentences in plain natural language
+- Describe the PURPOSE and BEHAVIOR of the code, not its syntax
+- Mention key concepts, algorithms, data structures, and domain terms
+- Use vocabulary that a developer would use when searching for this code
+- Do NOT include any code syntax, variable names, or function signatures
+- If the code is part of a larger module, mention what role it plays
+
+Code chunk:
+{text}
+
+Summary:

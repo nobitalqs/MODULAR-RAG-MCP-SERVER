@@ -271,8 +271,8 @@ class TestEdgeCases:
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         gen.transform([code_chunk], trace=trace)
 
-        # TraceContext.record_stage stores into .stages dict
-        assert "retrieval_text_generator" in trace.stages
+        # TraceContext.stages is list[dict], each with "stage" key
+        assert any(s.get("stage") == "retrieval_text_generator" for s in trace.stages)
 
     def test_llm_returns_empty_uses_fallback(
         self, mock_settings_enabled, code_chunk

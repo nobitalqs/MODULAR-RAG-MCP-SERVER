@@ -232,13 +232,6 @@ class AdaptiveRetrievalSettings:
 
 
 @dataclass(frozen=True)
-class MMRSettings:
-    enabled: bool = False
-    lambda_: float = 0.7  # 0.0=pure diversity, 1.0=pure relevance
-    candidate_multiplier: int = 3  # fetch top_k * N candidates for MMR pool
-
-
-@dataclass(frozen=True)
 class RetrievalSettings:
     dense_top_k: int
     sparse_top_k: int
@@ -247,7 +240,6 @@ class RetrievalSettings:
     dense_weight: float = 1.0
     sparse_weight: float = 0.4
     max_per_document: int = 0  # 0 = no limit; >0 = max chunks per source file
-    mmr: MMRSettings | None = None
     adaptive: AdaptiveRetrievalSettings | None = None
 
 
@@ -421,16 +413,6 @@ class Settings:
         rerank = _require_mapping(data, "rerank", "settings")
         evaluation = _require_mapping(data, "evaluation", "settings")
         observability = _require_mapping(data, "observability", "settings")
-
-        # Parse optional retrieval.mmr sub-section
-        mmr_settings = None
-        if "mmr" in retrieval:
-            mmr_raw = _require_mapping(retrieval, "mmr", "retrieval")
-            mmr_settings = MMRSettings(
-                enabled=_require_bool(mmr_raw, "enabled", "retrieval.mmr"),
-                lambda_=float(mmr_raw.get("lambda", 0.7)),
-                candidate_multiplier=int(mmr_raw.get("candidate_multiplier", 3)),
-            )
 
         # Parse optional retrieval.adaptive sub-section
         adaptive_settings = None
@@ -639,7 +621,6 @@ class Settings:
                 dense_weight=float(retrieval.get("dense_weight", 1.0)),
                 sparse_weight=float(retrieval.get("sparse_weight", 0.4)),
                 max_per_document=int(retrieval.get("max_per_document", 0)),
-                mmr=mmr_settings,
                 adaptive=adaptive_settings,
             ),
             rerank=RerankSettings(

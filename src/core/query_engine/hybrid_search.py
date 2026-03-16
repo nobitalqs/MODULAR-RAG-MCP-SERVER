@@ -81,6 +81,9 @@ class HybridSearchConfig:
     dense_weight: float = 1.0
     sparse_weight: float = 1.0
     max_per_document: int = 0  # 0 = no limit; >0 = max chunks per source file
+    mmr_enabled: bool = False
+    mmr_lambda: float = 0.7
+    mmr_candidate_multiplier: int = 3
 
 
 @dataclass
@@ -200,6 +203,15 @@ class HybridSearch:
             dense_weight=getattr(retrieval_config, "dense_weight", 1.0),
             sparse_weight=getattr(retrieval_config, "sparse_weight", 1.0),
             max_per_document=getattr(retrieval_config, "max_per_document", 0),
+            mmr_enabled=getattr(
+                getattr(retrieval_config, "mmr", None), "enabled", False,
+            ),
+            mmr_lambda=getattr(
+                getattr(retrieval_config, "mmr", None), "lambda_", 0.7,
+            ),
+            mmr_candidate_multiplier=getattr(
+                getattr(retrieval_config, "mmr", None), "candidate_multiplier", 3,
+            ),
         )
 
     def search(
@@ -299,8 +311,20 @@ class HybridSearch:
                 fused_results, merged_filters,
             )
 
-        # Step 6: Limit to top_k
-        final_results = fused_results[:effective_top_k]
+        # Step 6: MMR diversification or simple top_k limit
+        if self.config.mmr_enabled:
+            from src.core.query_engine.mmr import mmr_select
+
+            # Feed a larger candidate pool to MMR
+            candidate_pool_size = effective_top_k * self.config.mmr_candidate_multiplier
+            candidates = fused_results[:candidate_pool_size]
+            final_results = mmr_select(
+                candidates,
+                top_k=effective_top_k,
+                lambda_=self.config.mmr_lambda,
+            )
+        else:
+            final_results = fused_results[:effective_top_k]
 
         # Step 7: Source diversity — limit chunks per document
         if self.config.max_per_document > 0:

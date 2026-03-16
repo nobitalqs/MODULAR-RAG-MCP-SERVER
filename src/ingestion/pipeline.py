@@ -38,6 +38,7 @@ from src.ingestion.storage.vector_upserter import VectorUpserter
 from src.ingestion.transform.chunk_refiner import ChunkRefiner
 from src.ingestion.transform.image_captioner import ImageCaptioner
 from src.ingestion.transform.metadata_enricher import MetadataEnricher
+from src.ingestion.transform.retrieval_text_generator import RetrievalTextGenerator
 
 # Factories
 from src.libs.embedding import (
@@ -168,6 +169,7 @@ class IngestionPipeline:
         self.chunk_refiner = ChunkRefiner(settings, llm=llm)
         self.metadata_enricher = MetadataEnricher(settings, llm=llm)
         self.image_captioner = ImageCaptioner(settings, vision_llm=vision_llm)
+        self.retrieval_text_generator = RetrievalTextGenerator(settings, llm=llm)
 
         # Stage 5: Encoding — create embedding from factory
         embedding = self._create_embedding(settings)
@@ -392,6 +394,7 @@ class IngestionPipeline:
             chunks = self.chunk_refiner.transform(chunks, trace=trace)
             chunks = self.metadata_enricher.transform(chunks, trace=trace)
             chunks = self.image_captioner.transform(chunks, trace=trace)
+            chunks = self.retrieval_text_generator.transform(chunks, trace=trace)
             elapsed = (time.monotonic() - t0) * 1000
 
             stages["transform"] = {

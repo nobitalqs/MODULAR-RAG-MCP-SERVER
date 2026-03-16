@@ -315,3 +315,57 @@ class TestIntegration:
         embedding.embed.assert_called_once()
         call_kwargs = embedding.embed.call_args.kwargs
         assert call_kwargs["trace"] == mock_trace
+
+
+# ── Retrieval text ────────────────────────────────────────────────────
+
+
+class TestRetrievalText:
+    """DenseEncoder should prefer metadata['retrieval_text'] over chunk.text."""
+
+    def test_uses_retrieval_text_when_present(self):
+        embedding = FakeEmbedding(dimension=4)
+        encoder = DenseEncoder(embedding, batch_size=10)
+
+        chunk = Chunk(
+            id="rt_001",
+            text="def foo(): pass",
+            metadata={
+                "source_path": "test.py",
+                "retrieval_text": "A function that does nothing.",
+            },
+        )
+        encoder.encode([chunk])
+
+        # FakeEmbedding records call_history — check the text sent
+        assert embedding.call_history[0] == ["A function that does nothing."]
+
+    def test_falls_back_to_text_without_retrieval_text(self):
+        embedding = FakeEmbedding(dimension=4)
+        encoder = DenseEncoder(embedding, batch_size=10)
+
+        chunk = Chunk(
+            id="rt_002",
+            text="def bar(): return 42",
+            metadata={"source_path": "test.py"},
+        )
+        encoder.encode([chunk])
+
+        assert embedding.call_history[0] == ["def bar(): return 42"]
+
+    def test_falls_back_when_retrieval_text_empty(self):
+        embedding = FakeEmbedding(dimension=4)
+        encoder = DenseEncoder(embedding, batch_size=10)
+
+        chunk = Chunk(
+            id="rt_003",
+            text="def baz(): return 0",
+            metadata={
+                "source_path": "test.py",
+                "retrieval_text": "",
+            },
+        )
+        encoder.encode([chunk])
+
+        # Empty retrieval_text should fall back to chunk.text
+        assert embedding.call_history[0] == ["def baz(): return 0"]

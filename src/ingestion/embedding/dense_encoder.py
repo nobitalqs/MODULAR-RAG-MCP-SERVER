@@ -69,7 +69,7 @@ class DenseEncoder:
         if not chunks:
             raise ValueError("Cannot encode empty chunks list")
 
-        texts = [c.text for c in chunks]
+        texts = [c.metadata.get("retrieval_text") or c.text for c in chunks]
         self._validate_texts(texts, chunks)
 
         all_vectors: list[list[float]] = []

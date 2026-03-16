@@ -76,6 +76,8 @@ def _make_fake_pipeline() -> object:
     fp.metadata_enricher.transform.return_value = chunks
     fp.image_captioner = MagicMock()
     fp.image_captioner.transform.return_value = chunks
+    fp.retrieval_text_generator = MagicMock()
+    fp.retrieval_text_generator.transform.return_value = chunks
 
     # Stage 5: encoding
     batch_result = MagicMock()
@@ -252,8 +254,11 @@ class TestPipelineOrchestration:
         fp.image_captioner.transform.side_effect = lambda c, **kw: (
             call_order.append("captioner") or c
         )
+        fp.retrieval_text_generator.transform.side_effect = lambda c, **kw: (
+            call_order.append("retrieval_text_generator") or c
+        )
         IngestionPipeline.run(fp, "test.pdf")
-        assert call_order == ["refiner", "enricher", "captioner"]
+        assert call_order == ["refiner", "enricher", "captioner", "retrieval_text_generator"]
 
     def test_bm25_receives_vector_ids(self) -> None:
         """BM25 term_stats should use vector IDs, not chunk IDs."""

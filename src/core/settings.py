@@ -321,6 +321,7 @@ class IngestionSettings:
     metadata_enricher: dict[str, Any] | None = None
     table_extraction: TableExtractionSettings | None = None
     formula_extraction: FormulaExtractionSettings | None = None
+    retrieval_text_generator: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -443,9 +444,7 @@ class Settings:
                 formula_extraction_settings = FormulaExtractionSettings(
                     enabled=formula_cfg.get("enabled", True),
                     model=formula_cfg.get("model", "pix2tex"),
-                    confidence_threshold=float(
-                        formula_cfg.get("confidence_threshold", 0.5)
-                    ),
+                    confidence_threshold=float(formula_cfg.get("confidence_threshold", 0.5)),
                 )
 
             ingestion_settings = IngestionSettings(
@@ -457,6 +456,7 @@ class Settings:
                 metadata_enricher=ing.get("metadata_enricher"),
                 table_extraction=table_extraction_settings,
                 formula_extraction=formula_extraction_settings,
+                retrieval_text_generator=ing.get("retrieval_text_generator"),
             )
 
         vision_llm_settings = None

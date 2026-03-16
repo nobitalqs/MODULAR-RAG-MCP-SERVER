@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, MagicMock
 
 from src.core.settings import Settings
-from src.core.types import Chunk
 from src.core.trace.trace_context import TraceContext
+from src.core.types import Chunk
 from src.ingestion.transform.retrieval_text_generator import RetrievalTextGenerator
 from src.libs.llm.base_llm import BaseLLM
-
 
 # ── Fixtures ───────────────────────────────────────────────────────
 
@@ -69,7 +69,7 @@ def code_chunk():
     """A source_code chunk."""
     return Chunk(
         id="chunk_001",
-        text='def compute_mass(p1, p2):\n    e = p1.E + p2.E\n    return math.sqrt(e**2 - px**2)',
+        text="def compute_mass(p1, p2):\n    e = p1.E + p2.E\n    return math.sqrt(e**2 - px**2)",
         metadata={
             "source_path": "analysis.py",
             "doc_type": "source_code",
@@ -113,9 +113,7 @@ def markdown_chunk():
 
 
 class TestLLMSummary:
-    def test_source_code_gets_retrieval_text(
-        self, mock_settings_enabled, mock_llm, code_chunk
-    ):
+    def test_source_code_gets_retrieval_text(self, mock_settings_enabled, mock_llm, code_chunk):
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         result = gen.transform([code_chunk])
 
@@ -125,9 +123,7 @@ class TestLLMSummary:
         # Original text preserved
         assert result[0].text == code_chunk.text
 
-    def test_llm_receives_truncated_text(
-        self, mock_settings_enabled, mock_llm
-    ):
+    def test_llm_receives_truncated_text(self, mock_settings_enabled, mock_llm):
         """Code longer than max_chunk_length is truncated before LLM call."""
         long_code = "x = 1\n" * 500  # ~3000 chars, exceeds 2000
         chunk = Chunk(
@@ -148,9 +144,7 @@ class TestLLMSummary:
 
 
 class TestPassthrough:
-    def test_pdf_chunk_unchanged(
-        self, mock_settings_enabled, mock_llm, pdf_chunk
-    ):
+    def test_pdf_chunk_unchanged(self, mock_settings_enabled, mock_llm, pdf_chunk):
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         result = gen.transform([pdf_chunk])
 
@@ -159,9 +153,7 @@ class TestPassthrough:
         assert result[0].text == pdf_chunk.text
         mock_llm.chat.assert_not_called()
 
-    def test_markdown_chunk_unchanged(
-        self, mock_settings_enabled, mock_llm, markdown_chunk
-    ):
+    def test_markdown_chunk_unchanged(self, mock_settings_enabled, mock_llm, markdown_chunk):
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         result = gen.transform([markdown_chunk])
 
@@ -174,8 +166,8 @@ class TestPassthrough:
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         result = gen.transform([code_chunk, pdf_chunk])
 
-        assert "retrieval_text" in result[0].metadata       # code
-        assert "retrieval_text" not in result[1].metadata    # pdf
+        assert "retrieval_text" in result[0].metadata  # code
+        assert "retrieval_text" not in result[1].metadata  # pdf
         assert mock_llm.chat.call_count == 1
 
 
@@ -183,9 +175,7 @@ class TestPassthrough:
 
 
 class TestFallback:
-    def test_llm_failure_uses_rule_based(
-        self, mock_settings_enabled, mock_llm_failing, code_chunk
-    ):
+    def test_llm_failure_uses_rule_based(self, mock_settings_enabled, mock_llm_failing, code_chunk):
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm_failing)
         result = gen.transform([code_chunk])
 
@@ -195,9 +185,7 @@ class TestFallback:
         # Rule-based should contain brief
         assert "Invariant mass calculation" in result[0].metadata["retrieval_text"]
 
-    def test_no_llm_uses_rule_based(
-        self, mock_settings_enabled, code_chunk
-    ):
+    def test_no_llm_uses_rule_based(self, mock_settings_enabled, code_chunk):
         """When no LLM is provided, falls back to rule-based."""
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=None)
         result = gen.transform([code_chunk])
@@ -228,18 +216,14 @@ class TestFallback:
 
 
 class TestDisabled:
-    def test_disabled_passes_through(
-        self, mock_settings_disabled, mock_llm, code_chunk
-    ):
+    def test_disabled_passes_through(self, mock_settings_disabled, mock_llm, code_chunk):
         gen = RetrievalTextGenerator(mock_settings_disabled, llm=mock_llm)
         result = gen.transform([code_chunk])
 
         assert "retrieval_text" not in result[0].metadata
         mock_llm.chat.assert_not_called()
 
-    def test_no_config_passes_through(
-        self, mock_settings_no_config, mock_llm, code_chunk
-    ):
+    def test_no_config_passes_through(self, mock_settings_no_config, mock_llm, code_chunk):
         gen = RetrievalTextGenerator(mock_settings_no_config, llm=mock_llm)
         result = gen.transform([code_chunk])
 
@@ -264,9 +248,7 @@ class TestEdgeCases:
         assert code_chunk.metadata == original_metadata
         assert result[0] is not code_chunk
 
-    def test_trace_context_recorded(
-        self, mock_settings_enabled, mock_llm, code_chunk
-    ):
+    def test_trace_context_recorded(self, mock_settings_enabled, mock_llm, code_chunk):
         trace = TraceContext(trace_type="test")
         gen = RetrievalTextGenerator(mock_settings_enabled, llm=mock_llm)
         gen.transform([code_chunk], trace=trace)
@@ -274,9 +256,7 @@ class TestEdgeCases:
         # TraceContext.stages is list[dict], each with "stage" key
         assert any(s.get("stage") == "retrieval_text_generator" for s in trace.stages)
 
-    def test_llm_returns_empty_uses_fallback(
-        self, mock_settings_enabled, code_chunk
-    ):
+    def test_llm_returns_empty_uses_fallback(self, mock_settings_enabled, code_chunk):
         """If LLM returns empty string, fall back to rule-based."""
         llm = Mock(spec=BaseLLM)
         response = Mock()

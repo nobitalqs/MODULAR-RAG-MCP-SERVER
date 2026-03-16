@@ -80,6 +80,7 @@ class HybridSearchConfig:
     metadata_filter_post: bool = True
     dense_weight: float = 1.0
     sparse_weight: float = 1.0
+    max_per_document: int = 0  # 0 = no limit; >0 = max chunks per source file
 
 
 @dataclass
@@ -198,6 +199,7 @@ class HybridSearch:
             metadata_filter_post=True,
             dense_weight=getattr(retrieval_config, "dense_weight", 1.0),
             sparse_weight=getattr(retrieval_config, "sparse_weight", 1.0),
+            max_per_document=getattr(retrieval_config, "max_per_document", 0),
         )
 
     def search(
@@ -299,6 +301,12 @@ class HybridSearch:
 
         # Step 6: Limit to top_k
         final_results = fused_results[:effective_top_k]
+
+        # Step 7: Source diversity — limit chunks per document
+        if self.config.max_per_document > 0:
+            final_results = self._diversify_results(
+                final_results, self.config.max_per_document,
+            )
 
         logger.debug("HybridSearch: returning %d results", len(final_results))
 
@@ -696,6 +704,39 @@ class HybridSearch:
             return results
 
         return [r for r in results if self._matches_filters(r.metadata, metadata_filters)]
+
+    @staticmethod
+    def _diversify_results(
+        results: list[RetrievalResult],
+        max_per_document: int,
+    ) -> list[RetrievalResult]:
+        """Limit chunks per source document for result diversity.
+
+        Preserves score ordering.  Each source file contributes at most
+        ``max_per_document`` chunks; remaining slots go to the next
+        highest-scoring chunks from other documents.
+
+        Args:
+            results: Score-sorted results (highest first).
+            max_per_document: Max chunks allowed per source_path.
+
+        Returns:
+            Filtered results maintaining original score order.
+        """
+        if max_per_document <= 0:
+            return results
+
+        doc_counts: dict[str, int] = {}
+        diversified: list[RetrievalResult] = []
+
+        for r in results:
+            source = r.metadata.get("source_path", "")
+            count = doc_counts.get(source, 0)
+            if count < max_per_document:
+                diversified.append(r)
+                doc_counts[source] = count + 1
+
+        return diversified
 
     def _matches_filters(
         self,

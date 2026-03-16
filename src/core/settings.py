@@ -239,6 +239,7 @@ class RetrievalSettings:
     rrf_k: int
     dense_weight: float = 1.0
     sparse_weight: float = 0.4
+    max_per_document: int = 0  # 0 = no limit; >0 = max chunks per source file
     adaptive: AdaptiveRetrievalSettings | None = None
 
 
@@ -619,6 +620,7 @@ class Settings:
                 rrf_k=_require_int(retrieval, "rrf_k", "retrieval"),
                 dense_weight=float(retrieval.get("dense_weight", 1.0)),
                 sparse_weight=float(retrieval.get("sparse_weight", 0.4)),
+                max_per_document=int(retrieval.get("max_per_document", 0)),
                 adaptive=adaptive_settings,
             ),
             rerank=RerankSettings(

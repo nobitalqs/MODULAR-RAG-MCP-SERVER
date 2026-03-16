@@ -1120,3 +1120,104 @@ class TestRRFFusionIntegration:
         for r1, r2 in zip(results1, results2):
             assert r1.chunk_id == r2.chunk_id
             assert r1.score == r2.score
+
+
+# =============================================================================
+# Source Diversity (max_per_document)
+# =============================================================================
+
+
+class TestSourceDiversity:
+    """Test max_per_document source diversity filtering."""
+
+    def test_diversify_limits_chunks_per_source(self):
+        """3 chunks from same PDF → only 2 kept with max_per_document=2."""
+        results = [
+            RetrievalResult(chunk_id="c1", score=0.9, text="chunk1",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c2", score=0.8, text="chunk2",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c3", score=0.7, text="chunk3",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c4", score=0.6, text="chunk4",
+                            metadata={"source_path": "b.pdf"}),
+        ]
+
+        diversified = HybridSearch._diversify_results(results, max_per_document=2)
+
+        assert len(diversified) == 3
+        sources = [r.metadata["source_path"] for r in diversified]
+        assert sources.count("a.pdf") == 2
+        assert sources.count("b.pdf") == 1
+        # Score order preserved
+        assert diversified[0].chunk_id == "c1"
+        assert diversified[1].chunk_id == "c2"
+        assert diversified[2].chunk_id == "c4"
+
+    def test_diversify_zero_means_no_limit(self):
+        """max_per_document=0 returns all results unchanged."""
+        results = [
+            RetrievalResult(chunk_id="c1", score=0.9, text="a",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c2", score=0.8, text="b",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c3", score=0.7, text="c",
+                            metadata={"source_path": "a.pdf"}),
+        ]
+
+        diversified = HybridSearch._diversify_results(results, max_per_document=0)
+
+        assert len(diversified) == 3
+
+    def test_diversify_with_max_1(self):
+        """max_per_document=1 ensures unique sources."""
+        results = [
+            RetrievalResult(chunk_id="c1", score=0.9, text="a",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c2", score=0.8, text="b",
+                            metadata={"source_path": "a.pdf"}),
+            RetrievalResult(chunk_id="c3", score=0.7, text="c",
+                            metadata={"source_path": "b.pdf"}),
+            RetrievalResult(chunk_id="c4", score=0.6, text="d",
+                            metadata={"source_path": "c.pdf"}),
+        ]
+
+        diversified = HybridSearch._diversify_results(results, max_per_document=1)
+
+        assert len(diversified) == 3
+        sources = [r.metadata["source_path"] for r in diversified]
+        assert len(set(sources)) == 3  # all unique
+
+    def test_diversify_preserves_score_order(self):
+        """Diversified results maintain descending score order."""
+        results = [
+            RetrievalResult(chunk_id="c1", score=0.9, text="a",
+                            metadata={"source_path": "x.pdf"}),
+            RetrievalResult(chunk_id="c2", score=0.85, text="b",
+                            metadata={"source_path": "x.pdf"}),
+            RetrievalResult(chunk_id="c3", score=0.8, text="c",
+                            metadata={"source_path": "y.pdf"}),
+            RetrievalResult(chunk_id="c4", score=0.75, text="d",
+                            metadata={"source_path": "x.pdf"}),
+            RetrievalResult(chunk_id="c5", score=0.7, text="e",
+                            metadata={"source_path": "y.pdf"}),
+        ]
+
+        diversified = HybridSearch._diversify_results(results, max_per_document=1)
+
+        scores = [r.score for r in diversified]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_diversify_empty_results(self):
+        """Empty input returns empty output."""
+        assert HybridSearch._diversify_results([], max_per_document=2) == []
+
+    def test_config_reads_max_per_document(self):
+        """HybridSearchConfig should include max_per_document."""
+        config = HybridSearchConfig(max_per_document=2)
+        assert config.max_per_document == 2
+
+    def test_config_default_no_limit(self):
+        """Default max_per_document is 0 (no limit)."""
+        config = HybridSearchConfig()
+        assert config.max_per_document == 0

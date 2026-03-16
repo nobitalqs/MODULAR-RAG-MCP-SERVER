@@ -154,3 +154,72 @@ class TestKwargs:
     def test_accepts_kwargs(self):
         loader = SourceCodeLoader(extract_images=True, some_option="value")
         assert isinstance(loader, SourceCodeLoader)
+
+
+class TestBriefExtraction:
+    """Extract file-level description from header comments."""
+
+    def test_python_brief_from_docstring(self, loader, tmp_path):
+        content = '"""Dimuon invariant mass analysis using NanoAOD."""\n\nimport ROOT\n'
+        path = tmp_path / "analysis.py"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert doc.metadata["brief"] == "Dimuon invariant mass analysis using NanoAOD."
+
+    def test_python_brief_from_hash_comments(self, loader, tmp_path):
+        content = (
+            "## \\file\n"
+            "## \\ingroup tutorial_fit\n"
+            "## \\brief Fitting a Gaussian to histogram data\n"
+            "##\n"
+            "## \\macro_code\n"
+            "import ROOT\n"
+        )
+        path = tmp_path / "fit.py"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert "Fitting a Gaussian to histogram data" in doc.metadata["brief"]
+
+    def test_cpp_brief_from_triple_slash(self, loader, tmp_path):
+        content = (
+            "/// \\file\n"
+            "/// \\ingroup tutorial_hist\n"
+            "/// \\brief Draw a histogram with random Gaussian values\n"
+            "///\n"
+            "/// \\macro_image\n"
+            "#include <TH1F.h>\n"
+        )
+        path = tmp_path / "hist.C"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert "Draw a histogram with random Gaussian values" in doc.metadata["brief"]
+
+    def test_cpp_brief_from_block_comment(self, loader, tmp_path):
+        content = (
+            "/*\n"
+            " * Compute dimuon invariant mass from NanoAOD\n"
+            " */\n"
+            "#include <ROOT/RDataFrame.hxx>\n"
+        )
+        path = tmp_path / "dimuon.C"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert "Compute dimuon invariant mass from NanoAOD" in doc.metadata["brief"]
+
+    def test_no_brief_returns_empty(self, loader, tmp_path):
+        content = "import ROOT\nh = ROOT.TH1F('h','',100,-5,5)\n"
+        path = tmp_path / "bare.py"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert doc.metadata["brief"] == ""
+
+    def test_python_hash_comment_header(self, loader, tmp_path):
+        content = (
+            "# This script analyzes Z boson decay\n"
+            "# using CMS open data\n"
+            "import ROOT\n"
+        )
+        path = tmp_path / "z_boson.py"
+        path.write_text(content)
+        doc = loader.load(path)
+        assert "analyzes Z boson decay" in doc.metadata["brief"]

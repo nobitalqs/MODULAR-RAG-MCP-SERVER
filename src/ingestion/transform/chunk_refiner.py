@@ -172,10 +172,11 @@ class ChunkRefiner(BaseTransform):
 
     @staticmethod
     def _inject_source_context(text: str, metadata: dict[str, Any]) -> str:
-        """Prepend source filename to chunk text for retrieval discoverability.
+        """Prepend source filename and brief to chunk text for retrieval.
 
-        Ensures filename keywords (e.g. "DimuonAnalysis") appear in both
-        BM25 and dense search indices, not just in unsearchable metadata.
+        Ensures filename keywords (e.g. "DimuonAnalysis") and file-level
+        descriptions appear in both BM25 and dense search indices,
+        not just in unsearchable metadata.
 
         Skips injection if:
         - No filename can be determined
@@ -188,7 +189,14 @@ class ChunkRefiner(BaseTransform):
             return text
         if filename in text:
             return text
-        return f"[Source: {filename}]\n{text}"
+
+        header = f"[Source: {filename}]"
+
+        brief = metadata.get("brief", "")
+        if brief and brief not in text:
+            header += f"\n[Brief: {brief}]"
+
+        return f"{header}\n{text}"
 
     # ── rule-based cleaning ───────────────────────────────────────────
 

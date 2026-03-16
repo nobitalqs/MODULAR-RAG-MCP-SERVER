@@ -425,6 +425,65 @@ class TestSourceContextInjection:
 
         assert "[Source: attention_is_all_you_need.pdf]" in result[0].text
 
+    def test_brief_injected_for_source_code(self, mock_settings):
+        """Source code chunks should have brief description injected."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="df = ROOT.RDataFrame('Events', 'NanoAOD.root')",
+            metadata={
+                "source_path": "/tutorials/df102.py",
+                "doc_type": "source_code",
+                "filename": "df102.py",
+                "brief": "Dimuon invariant mass analysis using NanoAOD",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: df102.py]" in result[0].text
+        assert "[Brief: Dimuon invariant mass analysis using NanoAOD]" in result[0].text
+        assert "RDataFrame" in result[0].text
+
+    def test_no_brief_line_when_brief_empty(self, mock_settings):
+        """No [Brief: ] line when brief is empty string."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="import ROOT",
+            metadata={
+                "source_path": "/code/bare.py",
+                "doc_type": "source_code",
+                "filename": "bare.py",
+                "brief": "",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: bare.py]" in result[0].text
+        assert "[Brief:" not in result[0].text
+
+    def test_no_brief_duplication(self, mock_settings):
+        """Don't inject brief if it already appears in text."""
+        refiner = ChunkRefiner(mock_settings)
+        chunk = Chunk(
+            id="c1",
+            text="# Dimuon invariant mass analysis\nimport ROOT",
+            metadata={
+                "source_path": "/code/analysis.py",
+                "doc_type": "source_code",
+                "filename": "analysis.py",
+                "brief": "Dimuon invariant mass analysis",
+            },
+        )
+
+        result = refiner.transform([chunk])
+
+        assert "[Source: analysis.py]" in result[0].text
+        # Brief is already in text, should not be injected again
+        assert "[Brief:" not in result[0].text
+
 
 # Test Configuration
 

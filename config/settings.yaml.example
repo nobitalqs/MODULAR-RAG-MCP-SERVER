@@ -125,6 +125,10 @@ ingestion:
   #   enabled: true
   #   model: "pix2tex"
   #   confidence_threshold: 0.5    # Below this → [FORMULA: unrecognized]
+  retrieval_text_generator:
+    enabled: true
+    target_doc_types: ["source_code"]
+    max_chunk_length: 2000
 
 # =============================================================================
 # Dashboard Configuration

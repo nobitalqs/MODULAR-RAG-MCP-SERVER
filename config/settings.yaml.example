@@ -68,7 +68,7 @@ retrieval:
   dense_weight: 1.0    # Semantic retrieval weight (>= 0.0)
   sparse_weight: 0.4   # BM25 keyword weight (>= 0.0) — tuned via K5 benchmark (dense≈2×sparse)
   adaptive:
-    enabled: true
+    enabled: false
     score_threshold: 0.0
     expand_factor: 2
     max_retries: 1

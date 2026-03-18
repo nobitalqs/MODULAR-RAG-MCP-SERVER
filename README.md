@@ -213,10 +213,20 @@ The project integrates [Ragas](https://docs.ragas.io/) for automated RAG quality
 | **Answer Relevancy** | Does the answer actually address the question? |
 | **Context Precision** | Are the retrieved chunks relevant and well-ranked? |
 
-Run evaluation via Dashboard (Evaluation Panel) or CLI:
+### Benchmark Results
+
+Evaluated on a golden test set of **16 queries across 4 categories** (3 documents, 440 chunks):
+
+| Metric | Score | What It Means |
+|:-------|:-----:|:--------------|
+| **Faithfulness** | 0.82 | Answers are well-grounded in retrieved context |
+| **Context Precision** | 0.74 | Retrieved chunks are relevant and well-ranked |
+| **Answer Relevancy** | 0.61 | Answers address the question (room for improvement) |
+
+Run your own evaluation:
 
 ```bash
-python scripts/evaluate.py
+python scripts/evaluate.py --collection golden --top-k 5
 ```
 
 ### Test Suite
@@ -514,10 +524,20 @@ python scripts/start_dashboard.py                 # → http://localhost:8501
 | **Answer Relevancy** | 答案是否真正回答了问题？ |
 | **Context Precision** | 检索到的文档是否相关且排序合理？ |
 
-通过仪表盘（评估面板）或命令行运行：
+### 评估基线
+
+基于 **16 条查询、4 个类别** 的黄金测试集（3 份文档，440 chunks）：
+
+| 指标 | 分数 | 含义 |
+|:-----|:----:|:-----|
+| **Faithfulness** | 0.82 | 答案忠实于检索到的上下文 |
+| **Context Precision** | 0.74 | 检索到的文档相关且排序合理 |
+| **Answer Relevancy** | 0.61 | 答案与问题的相关性（有提升空间） |
+
+运行评估：
 
 ```bash
-python scripts/evaluate.py
+python scripts/evaluate.py --collection golden --top-k 5
 ```
 
 ### 测试覆盖

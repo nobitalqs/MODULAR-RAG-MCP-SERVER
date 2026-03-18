@@ -2534,7 +2534,7 @@ memory:
 | K3 | 公式提取（pix2tex LaTeX OCR） | [x] | 2026-03-12 | FormulaExtractionSettings + 启发式分类 + pix2tex lazy import + 三级降级 + 15 tests |
 | K4 | 表格/公式提取集成测试 | [x] | 2026-03-12 | Loader→Chunker 端到端 + 性能基准 + 回归守卫 + 16 tests |
 | K5 | 权重调优基准测试 | [x] | 2026-03-12 | scripts/benchmark_weights.py — 11×11 权重网格 (120 combos) + 3 输出格式 (table/csv/json) + 最优推荐 |
-| K6★ | 分层 Memory 存储（Phase 2，暂不实现） | [ ] | - | 热/温/冷三层 + Write-through + Session 归档，详见设计文档 |
+| K6★ | 分层 Memory 存储（不实现 — 超出 MCP Server 职责） | [-] | - | MCP Server 是无状态 knowledge provider，三层记忆属于 Agent 层职责。当前 ConversationMemory 作为轻量 fallback 已足够。仅在项目演进为独立 HTTP Chatbot（非 MCP 入口）时考虑 |
 
 > **注**：K6 标记 ★ 表示已完成设计但暂不实现，待前 5 个任务完成后视需求启动。
 

@@ -203,23 +203,21 @@ Connect via MCP Streamable HTTP client to `http://<host>:8000/mcp`
 
 ## 📊 Evaluation
 
-### Dual Evaluation System
+### Ragas Evaluation Framework
 
-| Layer | Metrics | Method |
-|:------|:--------|:-------|
-| **IR Metrics** | Hit Rate, MRR | Deterministic chunk-ID matching |
-| **LLM-as-Judge** (Ragas) | Faithfulness, Answer Relevancy, Context Precision | LLM-based scoring |
+The project integrates [Ragas](https://docs.ragas.io/) for automated RAG quality assessment using LLM-as-Judge:
 
-### Retrieval Quality Baseline
+| Metric | What It Measures |
+|:-------|:-----------------|
+| **Faithfulness** | Is the answer grounded in the retrieved context? (anti-hallucination) |
+| **Answer Relevancy** | Does the answer actually address the question? |
+| **Context Precision** | Are the retrieved chunks relevant and well-ranked? |
 
-Evaluated against a golden test set of **16 queries across 4 categories** (3 documents, 417 chunks):
+Run evaluation via Dashboard (Evaluation Panel) or CLI:
 
-| Category | Queries | Recall@5 | MRR |
-|:---------|:-------:|:--------:|:---:|
-| Exact Fact | 5 | 50% | 1.0 |
-| Semantic Understanding | 5 | 50% | 0.5 |
-| Cross-Document | 3 | 100% | 0.5 |
-| **Average** | **13** | **67%** | **0.67** |
+```bash
+python scripts/evaluate.py
+```
 
 ### Test Suite
 
@@ -344,36 +342,193 @@ MIT
 - **全链路可观测** — JSONL 追踪 + 6 页 Streamlit 仪表盘 + Ragas 评估
 - **多表示索引** — 代码块自动生成自然语言摘要用于语义检索，原始代码用于关键词检索
 
-### 检索质量基线
+## 🏗 系统架构
 
-| 类别 | 查询数 | Recall@5 | MRR |
-|:-----|:------:|:--------:|:---:|
-| 精确事实 | 5 | 50% | 1.0 |
-| 语义理解 | 5 | 50% | 0.5 |
-| 跨文档 | 3 | 100% | 0.5 |
-| **平均** | **13** | **67%** | **0.67** |
+```mermaid
+graph TB
+    subgraph 客户端
+        C1[GitHub Copilot]
+        C2[Claude Desktop]
+        C3[其他 MCP Agent]
+    end
 
-### 快速开始
+    subgraph MCP["MCP Server 层"]
+        direction LR
+        T1[Stdio Transport]
+        T2[Streamable HTTP]
+        PH[协议处理器]
+        TOOLS["5 个工具"]
+    end
+
+    subgraph Core["查询引擎"]
+        QR[查询改写<br/>LLM / HyDE / None]
+        QP[查询处理器]
+        HS["混合检索"]
+        DR[稠密检索<br/>Embedding → ChromaDB]
+        SR[稀疏检索<br/>BM25 倒排索引]
+        FU[RRF 融合]
+        RR[精排重排<br/>CrossEncoder / LLM / Cohere]
+        RB[响应构建<br/>+ 多模态组装]
+    end
+
+    subgraph Ingestion["摄取管线"]
+        direction LR
+        L[文档加载<br/>PDF / MD / Code]
+        S[智能切分]
+        TR[增强处理<br/>去噪 + 元数据<br/>+ 图片描述 + 多表示]
+        E[双路编码<br/>Dense + Sparse]
+        U[存储写入<br/>ChromaDB + BM25]
+    end
+
+    subgraph Libs["可插拔组件层"]
+        direction LR
+        LLM["LLM ×4"]
+        EMB["Embedding ×3"]
+        VS["向量库"]
+        CACHE["缓存"]
+        MEM["会话记忆"]
+        CB["熔断器<br/>+ Provider 级联"]
+    end
+
+    subgraph Observe["可观测性"]
+        TRACE[JSONL 链路追踪]
+        DASH[Streamlit 仪表盘<br/>6 个页面]
+        EVAL[Ragas 评估]
+    end
+
+    C1 & C2 & C3 --> MCP
+    T1 & T2 --> PH --> TOOLS
+    TOOLS --> Core
+    Core --> Libs
+    Ingestion --> Libs
+    Core & Ingestion --> Observe
+    QR --> QP --> HS
+    HS --> DR & SR
+    DR & SR --> FU --> RR --> RB
+    L --> S --> TR --> E --> U
+```
+
+### 四层容错体系
+
+所有 LLM / Embedding API 调用均受四层保护：
+
+```
+ProviderChain（Layer 4 — Provider 降级：OpenAI → DeepSeek）
+  └── CircuitBreaker（Layer 3 — 连续失败后快速熔断）
+        └── RateLimitedLLM（Layer 1 — 令牌桶限速）
+              └── @retry_with_backoff（Layer 2 — 429/500/502/503 指数退避重试）
+                    └── HTTP API 调用
+```
+
+### 设计模式
+
+| 模式 | 应用 |
+|:-----|:-----|
+| **Registry + Factory** | 全部组件族 — 运行时注册，零工厂修改 |
+| **Null Object** | NoneReranker / NoneEvaluator / NoneRewriter — 禁用时的无操作回退 |
+| **配置驱动** | `settings.yaml` → frozen dataclass → Factory.create_from_settings() |
+| **双存储** | ChromaDB（稠密向量）+ 独立 BM25 索引（稀疏关键词） |
+| **多表示索引** | 代码块：LLM 摘要用于 Dense，原始代码用于 BM25 |
+
+## 🚀 快速开始
+
+### 环境要求
+
+- Python 3.10+
+- LLM + Embedding 后端：云 API（OpenAI / Azure / DeepSeek）或本地 [Ollama](https://ollama.ai)
+
+### 安装
 
 ```bash
 git clone https://github.com/nobitalqs/MODULAR-RAG-MCP-SERVER.git
 cd MODULAR-RAG-MCP-SERVER
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-cp config/settings.yaml.example config/settings.yaml
+cp config/settings.yaml.example config/settings.yaml   # 按需修改
+```
 
+### 运行
+
+```bash
 # 摄取文档
 python scripts/ingest.py --path /path/to/doc.pdf --collection my_kb
 
 # 启动 MCP 服务器
-python main.py                                    # Stdio（默认）
-python main.py --transport http --port 8000       # HTTP 模式
+python main.py                                    # Stdio（默认，本地开发）
+python main.py --transport http --port 8000       # HTTP（远程/Docker）
 
 # 启动仪表盘
-python scripts/start_dashboard.py
+python scripts/start_dashboard.py                 # → http://localhost:8501
 ```
 
-### 可插拔组件
+### 对接 MCP 客户端
+
+<details>
+<summary><b>GitHub Copilot / VS Code</b></summary>
+
+添加到 `.vscode/mcp.json`：
+```json
+{
+  "mcpServers": {
+    "modular-rag": {
+      "command": "python",
+      "args": ["main.py"],
+      "cwd": "/path/to/MODULAR-RAG-MCP-SERVER"
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>Claude Desktop / Claude Code</b></summary>
+
+```json
+{
+  "mcpServers": {
+    "modular-rag": {
+      "command": "python",
+      "args": ["main.py"],
+      "cwd": "/path/to/MODULAR-RAG-MCP-SERVER"
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>HTTP 模式（远程部署）</b></summary>
+
+启动服务：`python main.py --transport http --host 0.0.0.0 --port 8000`
+
+客户端通过 MCP Streamable HTTP 连接 `http://<host>:8000/mcp`
+</details>
+
+## 📊 评估体系
+
+集成 [Ragas](https://docs.ragas.io/) 框架，基于 LLM-as-Judge 进行自动化 RAG 质量评估：
+
+| 指标 | 评估内容 |
+|:-----|:---------|
+| **Faithfulness** | 答案是否基于检索到的上下文？（反幻觉） |
+| **Answer Relevancy** | 答案是否真正回答了问题？ |
+| **Context Precision** | 检索到的文档是否相关且排序合理？ |
+
+通过仪表盘（评估面板）或命令行运行：
+
+```bash
+python scripts/evaluate.py
+```
+
+### 测试覆盖
+
+| 类型 | 数量 |
+|:-----|-----:|
+| 单元测试 | 1798 |
+| 集成测试 | 70 |
+| **合计** | **1868** |
+
+## 🔌 可插拔组件
 
 | 组件 | 可选后端 | 配置项 |
 |:-----|:---------|:-------|
@@ -383,16 +538,88 @@ python scripts/start_dashboard.py
 | Reranker | `cross_encoder`, `llm`, `cohere`, `none` | `rerank.provider` |
 | 评估器 | `ragas`, `custom` | `evaluation.provider` |
 | 缓存 | `memory`, `redis` | `cache.provider` |
+| 限流器 | `token_bucket`, `null` | `rate_limit.provider` |
 | 查询改写 | `llm`, `hyde`, `none` | `query_rewriting.provider` |
 | 会话记忆 | `memory`, `redis` | `memory.provider` |
 
-> 新增后端 = 继承基类 + 注册到 Factory，不改现有代码。
+> 新增后端 = 继承基类 + 实现接口 + 注册到 Factory，不改现有代码。
 
-### 扩展方向
+## 📺 仪表盘
 
-**多用户与分布式**：认证中间件 → 多租户隔离 → Redis 状态外置 → 分布式向量库 → Docker 容器化
+6 页 Streamlit 可视化管理平台：
 
-**高级 RAG**：Agentic RAG（原子化工具）、分层检索、多表示扩展（表格/公式）、领域专用 Embedding
+| 页面 | 功能 |
+|:-----|:-----|
+| **系统总览** | 组件配置、集合统计、系统健康 |
+| **数据浏览器** | Chunk 内容、元数据、图片预览 |
+| **摄取管理** | 上传文档、触发摄取、删除文档，实时进度 |
+| **摄取追踪** | 阶段耗时瀑布图：load → split → transform → embed → upsert |
+| **查询追踪** | 管线追踪：rewrite → dense/sparse → fusion → rerank |
+| **评估面板** | 运行 Ragas 评估、查看指标、历史趋势 |
+
+## 🗺 扩展方向
+
+### 多用户与分布式
+
+| 优先级 | 项目 | 说明 |
+|:------:|:-----|:-----|
+| 1 | 认证中间件 | HTTP Transport 上加 API Key / OAuth2 |
+| 2 | 多租户隔离 | Collection 级别按 tenant_id 隔离 |
+| 3 | Redis 状态外置 | 缓存、记忆、限流 → Redis（代码已就绪，仅需改配置） |
+| 4 | BM25 共享存储 | Pickle → Redis / Elasticsearch |
+| 5 | 分布式向量库 | ChromaDB → Milvus / Qdrant |
+| 6 | Docker 容器化 | Dockerfile + docker-compose |
+
+### 高级 RAG
+
+| 项目 | 说明 |
+|:-----|:-----|
+| Agentic RAG | 原子化工具（list_directory, verify_fact），支持多步 Agent 推理 |
+| 分层检索 | 文档级摘要 → chunk 级精搜，适用于大规模语料 |
+| 多表示扩展 | LLM 摘要从代码扩展到表格、公式 |
+| 领域专用 Embedding | 不同 doc_type 使用不同 Embedding 模型 |
+
+## 📂 项目结构
+
+```
+src/
+├── core/              # 配置、类型、查询引擎、响应构建、链路追踪
+├── libs/              # 13 大可插拔组件族（Factory + Base + Providers）
+│   ├── llm/           # 4 个 LLM + 2 个 Vision LLM Provider
+│   ├── embedding/     # 3 个 Provider + EmbeddingChain 容错
+│   ├── reranker/      # CrossEncoder / LLM / Cohere / None
+│   ├── resilience/    # RetryWithBackoff, RateLimitedLLM
+│   ├── circuit_breaker/  # 熔断器、ProviderChain、EmbeddingChain
+│   └── ...            # cache, memory, query_rewriter, query_router 等
+├── ingestion/         # 6 阶段管线：load → split → transform → embed → upsert
+├── mcp_server/        # 协议处理器 + 5 个 MCP 工具
+└── observability/     # 日志、追踪、仪表盘（6 页）、评估（Ragas）
+```
+
+## ❓ 常见问题
+
+<details>
+<summary><b>能完全离线运行吗？</b></summary>
+
+可以。安装 [Ollama](https://ollama.ai)，将所有 provider 设为 `ollama`，零 API 费用运行：
+```bash
+ollama pull qwen2.5:3b && ollama pull nomic-embed-text
+```
+</details>
+
+<details>
+<summary><b>ChromaDB 维度不匹配？</b></summary>
+
+切换 Embedding Provider 时会出现（如 OpenAI 1536 维 → Ollama 768 维）。删除旧 collection 后重新摄取即可。
+</details>
+
+<details>
+<summary><b>如何新增 LLM Provider？</b></summary>
+
+1. 继承 `BaseLLM`，实现 `chat()` 方法
+2. 注册：`factory.register_provider("my_provider", MyLLM)`
+3. 配置：`llm.provider: "my_provider"`
+</details>
 
 ## 📄 License
 

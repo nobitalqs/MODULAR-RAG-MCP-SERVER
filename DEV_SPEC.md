@@ -2555,9 +2555,9 @@ memory:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| L7 | NotebookLoader（cell 感知转换） | [ ] | - | nbformat v4 解析 + code/markdown/raw cell → Markdown + 文本 output 保留 + 图表丢弃 |
-| L8 | MarkdownSplitter（heading 感知 + protected regions） | [ ] | - | heading 层级分隔符 + 代码块/表格保护 + UUID placeholder + 超长 chunk 兜底 |
-| L9 | Phase 2 单元测试 + 集成测试 | [ ] | - | test_notebook_loader + test_markdown_splitter + md/ipynb 端到端摄入检索验证 |
+| L7 | NotebookLoader（cell 感知转换） | [-] | - | (未来扩展) nbformat v4 解析，暂不考虑 ipynb 文档摄入 |
+| L8 | MarkdownSplitter（heading 感知 + protected regions） | [-] | - | (未来扩展) heading 层级分隔符 + 代码块/表格保护，当前 RecursiveSplitter 已满足需求 |
+| L9 | Phase 2 单元测试 + 集成测试 | [-] | - | (未来扩展) 随 L7/L8 实现时补充 |
 
 > **设计文档**：`docs/superpowers/specs/2026-03-13-md-notebook-loader-design.md`
 
@@ -2590,9 +2590,9 @@ memory:
 | 阶段 I | 5 | 5 | 100% |
 | 阶段 J | 9 | 9 | 100% |
 | 阶段 K | 5+1★ | 5 | 100% |
-| 阶段 L | 6+3 | 6 | 67% |
+| 阶段 L | 6+3★ | 6 | 100% (Phase 1 完成, Phase 2 标记为未来扩展) |
 | 阶段 M | 4 | 4 | 100% |
-| **总计** | **96** | **93** | **97%** |
+| **总计** | **93 (活跃)** | **93** | **100%** |
 
 
 ---

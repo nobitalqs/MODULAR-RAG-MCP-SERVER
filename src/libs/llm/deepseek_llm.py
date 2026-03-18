@@ -12,9 +12,10 @@ from typing import Any
 import httpx
 
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class DeepSeekLLMError(RuntimeError):
+class DeepSeekLLMError(RuntimeError, RetryableError):
     """Raised when the DeepSeek API returns an error."""
 
 
@@ -112,10 +113,9 @@ class DeepSeekLLM(BaseLLM):
                 raw_response=response_data,
             )
         except (KeyError, IndexError, TypeError) as exc:
-            raise DeepSeekLLMError(
-                f"[DeepSeek] Unexpected response format: {exc}"
-            ) from exc
+            raise DeepSeekLLMError(f"[DeepSeek] Unexpected response format: {exc}") from exc
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Internal method to call the DeepSeek API. Separated for test mocking.
 
@@ -126,9 +126,9 @@ class DeepSeekLLM(BaseLLM):
             Parsed JSON response.
 
         Raises:
-            httpx.TimeoutException: If the request times out.
+            DeepSeekLLMError: With status_code set for retryable HTTP errors.
+            httpx.TimeoutException: If the request times out (also retried).
             httpx.ConnectError: If connection fails.
-            httpx.HTTPStatusError: If the API returns an error status.
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -136,7 +136,12 @@ class DeepSeekLLM(BaseLLM):
             "Content-Type": "application/json",
         }
 
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            err = DeepSeekLLMError(str(exc))
+            err.status_code = exc.response.status_code
+            raise err from exc

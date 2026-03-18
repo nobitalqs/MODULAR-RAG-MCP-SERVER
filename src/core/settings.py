@@ -198,6 +198,7 @@ class EmbeddingSettings:
     azure_endpoint: str | None = None
     deployment_name: str | None = None
     base_url: str | None = None
+    circuit_breaker: CircuitBreakerSettings | None = None
 
 
 @dataclass(frozen=True)
@@ -577,6 +578,21 @@ class Settings:
                     for i, fb in enumerate(raw_fallbacks)
                 ]
 
+        # Parse circuit_breaker sub-section of embedding
+        emb_cb_settings = None
+        if "circuit_breaker" in embedding:
+            emb_cb_data = _require_mapping(embedding, "circuit_breaker", "embedding")
+            emb_cb_settings = CircuitBreakerSettings(
+                enabled=_require_bool(emb_cb_data, "enabled", "embedding.circuit_breaker"),
+                failure_threshold=_require_int(
+                    emb_cb_data, "failure_threshold", "embedding.circuit_breaker"
+                ),
+                cooldown_seconds=_require_number(
+                    emb_cb_data, "cooldown_seconds", "embedding.circuit_breaker"
+                ),
+                half_open_max_calls=emb_cb_data.get("half_open_max_calls", 1),
+            )
+
         llm_provider = _require_str(llm, "provider", "llm")
         emb_provider = _require_str(embedding, "provider", "embedding")
         rerank_provider = _require_str(rerank, "provider", "rerank")
@@ -604,6 +620,7 @@ class Settings:
                 azure_endpoint=_resolve_azure_endpoint(embedding, emb_provider),
                 deployment_name=embedding.get("deployment_name"),
                 base_url=_resolve_base_url(embedding, emb_provider),
+                circuit_breaker=emb_cb_settings,
             ),
             vector_store=VectorStoreSettings(
                 provider=_require_str(vector_store, "provider", "vector_store"),

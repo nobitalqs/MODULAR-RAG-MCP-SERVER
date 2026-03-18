@@ -71,7 +71,6 @@ class TestAdvancedComponentInit:
         tool = self._make_tool(settings=mock_settings)
         assert tool._conversation_memory is None
         assert tool._query_rewriter is None
-        assert tool._rate_limiter is None
         assert tool._query_router is None
 
 

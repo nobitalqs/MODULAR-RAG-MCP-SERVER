@@ -139,7 +139,6 @@ class QueryKnowledgeHubTool:
         # Phase J: Advanced components (lazy-initialized)
         self._conversation_memory = None
         self._query_rewriter = None
-        self._rate_limiter = None
         self._query_router = None
         self._advanced_initialized = False
 
@@ -158,11 +157,26 @@ class QueryKnowledgeHubTool:
 
         s = self.settings
 
-        # Rate limiter
-        if s.rate_limit is not None:
-            from src.libs.rate_limiter.limiter_factory import RateLimiterFactory
+        def _make_llm():
+            from src.libs.llm.azure_llm import AzureLLM
+            from src.libs.llm.deepseek_llm import DeepSeekLLM
+            from src.libs.llm.llm_factory import LLMFactory
+            from src.libs.llm.ollama_llm import OllamaLLM
+            from src.libs.llm.openai_llm import OpenAILLM
 
-            self._rate_limiter = RateLimiterFactory.create_from_settings(s.rate_limit)
+            factory = LLMFactory()
+            factory.register_provider("openai", OpenAILLM)
+            factory.register_provider("azure", AzureLLM)
+            factory.register_provider("deepseek", DeepSeekLLM)
+            factory.register_provider("ollama", OllamaLLM)
+            llm = factory.create_with_failover(s.llm)
+            if s.rate_limit is not None and s.rate_limit.enabled:
+                from src.libs.rate_limiter.limiter_factory import RateLimiterFactory
+                from src.libs.resilience.rate_limited_llm import RateLimitedLLM
+
+                limiter = RateLimiterFactory.create_from_settings(s.rate_limit)
+                llm = RateLimitedLLM(llm, limiter)
+            return llm
 
         # Query rewriter
         if s.query_rewriting is not None:
@@ -170,9 +184,7 @@ class QueryKnowledgeHubTool:
 
             llm = None
             if s.query_rewriting.enabled and s.query_rewriting.provider != "none":
-                from src.libs.llm.llm_factory import LLMFactory
-
-                llm = LLMFactory.create_llm(s)
+                llm = _make_llm()
             self._query_rewriter = QueryRewriterFactory.create_from_settings(
                 s.query_rewriting,
                 llm=llm,
@@ -180,16 +192,14 @@ class QueryKnowledgeHubTool:
 
         # Conversation memory
         if s.memory is not None and s.memory.enabled:
-            from src.libs.memory.memory_factory import MemoryFactory
             from src.libs.memory.conversation_memory import ConversationMemory
+            from src.libs.memory.memory_factory import MemoryFactory
 
             redis_url = s.cache.redis_url if s.cache else None
             store = MemoryFactory.create_from_settings(s.memory, redis_url=redis_url)
             llm = None
             if s.memory.summarize_enabled:
-                from src.libs.llm.llm_factory import LLMFactory
-
-                llm = LLMFactory.create_llm(s)
+                llm = _make_llm()
             self._conversation_memory = ConversationMemory(
                 store=store,
                 max_turns=s.memory.max_turns,
@@ -204,9 +214,7 @@ class QueryKnowledgeHubTool:
 
             llm = None
             if s.query_routing.enabled and s.query_routing.provider != "none":
-                from src.libs.llm.llm_factory import LLMFactory
-
-                llm = LLMFactory.create_llm(s)
+                llm = _make_llm()
             self._query_router = QueryRouterFactory.create_from_settings(
                 s.query_routing,
                 llm=llm,
@@ -366,10 +374,6 @@ class QueryKnowledgeHubTool:
                 elapsed_ms=_init_elapsed,
             )
 
-            # Phase J: Rate limiter acquire
-            if self._rate_limiter is not None:
-                self._rate_limiter.acquire()
-
             # Phase J: Get conversation context
             search_query = query
             conversation_history = None
@@ -488,10 +492,6 @@ class QueryKnowledgeHubTool:
                 except Exception as exc:
                     logger.warning("Memory add_turn failed: %s", exc)
 
-            # Phase J: Rate limiter release
-            if self._rate_limiter is not None:
-                self._rate_limiter.release()
-
             logger.info(
                 "query_knowledge_hub completed: %d results, is_empty=%s",
                 len(results),
@@ -503,9 +503,6 @@ class QueryKnowledgeHubTool:
             return response
 
         except Exception as e:
-            # Phase J: Rate limiter release on error
-            if self._rate_limiter is not None:
-                self._rate_limiter.release()
             logger.exception("query_knowledge_hub failed: %s", e)
             self._collect_trace(trace)
             return self._build_error_response(query, effective_collection, str(e))

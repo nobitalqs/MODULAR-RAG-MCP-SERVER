@@ -209,14 +209,14 @@ class IngestionPipeline:
 
     @staticmethod
     def _create_llm(settings: Settings):
-        """Create text LLM from settings.  Returns None on failure."""
+        """Create text LLM from settings with failover support.  Returns None on failure."""
         try:
             factory = LLMFactory()
             factory.register_provider("openai", OpenAILLM)
             factory.register_provider("azure", AzureLLM)
             factory.register_provider("deepseek", DeepSeekLLM)
             factory.register_provider("ollama", OllamaLLM)
-            return factory.create_from_settings(settings.llm)
+            return factory.create_with_failover(settings.llm)
         except Exception:
             logger.warning(
                 "LLM creation failed; transforms will use rule-only mode",

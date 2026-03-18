@@ -55,9 +55,7 @@ class LLMFactory:
             TypeError: If provider_class is not a BaseLLM subclass.
         """
         if not (isinstance(provider_class, type) and issubclass(provider_class, BaseLLM)):
-            raise TypeError(
-                f"{provider_class} must be a subclass of BaseLLM"
-            )
+            raise TypeError(f"{provider_class} must be a subclass of BaseLLM")
         self._providers[name.lower()] = provider_class
 
     def create(self, provider: str, **kwargs: Any) -> BaseLLM:
@@ -77,10 +75,7 @@ class LLMFactory:
         cls = self._providers.get(key)
         if cls is None:
             available = ", ".join(sorted(self._providers)) or "(none)"
-            raise ValueError(
-                f"Unknown LLM provider '{provider}'. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"Unknown LLM provider '{provider}'. Available: {available}")
         return cls(**kwargs)
 
     def create_from_settings(self, settings: LLMSettings) -> BaseLLM:
@@ -203,9 +198,7 @@ class LLMFactory:
             TypeError: If provider_class is not a BaseVisionLLM subclass.
         """
         if not (isinstance(provider_class, type) and issubclass(provider_class, BaseVisionLLM)):
-            raise TypeError(
-                f"{provider_class} must be a subclass of BaseVisionLLM"
-            )
+            raise TypeError(f"{provider_class} must be a subclass of BaseVisionLLM")
         self._vision_providers[name.lower()] = provider_class
 
     def create_vision_llm(self, provider: str, **kwargs: Any) -> BaseVisionLLM:
@@ -225,10 +218,7 @@ class LLMFactory:
         cls = self._vision_providers.get(key)
         if cls is None:
             available = ", ".join(sorted(self._vision_providers)) or "(none)"
-            raise ValueError(
-                f"Unknown Vision LLM provider '{provider}'. "
-                f"Available: {available}"
-            )
+            raise ValueError(f"Unknown Vision LLM provider '{provider}'. Available: {available}")
         return cls(**kwargs)
 
     def create_vision_llm_from_settings(

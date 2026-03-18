@@ -39,11 +39,13 @@ class ImageInput:
 
     def __post_init__(self) -> None:
         """Validate that exactly one input format is provided."""
-        provided = sum([
-            self.path is not None,
-            self.data is not None,
-            self.base64 is not None,
-        ])
+        provided = sum(
+            [
+                self.path is not None,
+                self.data is not None,
+                self.base64 is not None,
+            ]
+        )
         if provided == 0:
             raise ValueError("Must provide one of: path, data, or base64")
         if provided > 1:
@@ -97,9 +99,7 @@ class BaseVisionLLM(ABC):
             ValueError: If image is not an ImageInput instance.
         """
         if not isinstance(image, ImageInput):
-            raise ValueError(
-                f"Image must be an ImageInput instance, got {type(image).__name__}"
-            )
+            raise ValueError(f"Image must be an ImageInput instance, got {type(image).__name__}")
 
     def preprocess_image(
         self,

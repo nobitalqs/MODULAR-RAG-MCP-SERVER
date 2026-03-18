@@ -114,23 +114,23 @@ class AzureVisionLLM(BaseVisionLLM):
         # Build API messages
         api_messages: list[dict[str, Any]] = []
         if messages:
-            api_messages.extend(
-                {"role": m.role, "content": m.content} for m in messages
-            )
+            api_messages.extend({"role": m.role, "content": m.content} for m in messages)
 
         # Append current text + image as multimodal user message
-        api_messages.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": text},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{image.mime_type};base64,{image_base64}",
+        api_messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image.mime_type};base64,{image_base64}",
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            }
+        )
 
         payload = {
             "messages": api_messages,
@@ -146,9 +146,7 @@ class AzureVisionLLM(BaseVisionLLM):
             error_msg = str(exc)
             if self.api_key:
                 error_msg = error_msg.replace(self.api_key, "[REDACTED]")
-            raise AzureVisionLLMError(
-                f"[Azure Vision] API call failed: {error_msg}"
-            ) from exc
+            raise AzureVisionLLMError(f"[Azure Vision] API call failed: {error_msg}") from exc
 
         try:
             content = response_data["choices"][0]["message"]["content"]
@@ -169,9 +167,7 @@ class AzureVisionLLM(BaseVisionLLM):
                 raw_response=response_data,
             )
         except (KeyError, IndexError, TypeError) as exc:
-            raise AzureVisionLLMError(
-                f"[Azure Vision] Unexpected response format: {exc}"
-            ) from exc
+            raise AzureVisionLLMError(f"[Azure Vision] Unexpected response format: {exc}") from exc
 
     def _get_image_base64(self, image: ImageInput) -> str:
         """Convert ImageInput to base64 string.
@@ -197,9 +193,7 @@ class AzureVisionLLM(BaseVisionLLM):
         except Exception as exc:
             if isinstance(exc, AzureVisionLLMError):
                 raise
-            raise AzureVisionLLMError(
-                f"[Azure Vision] Failed to encode image: {exc}"
-            ) from exc
+            raise AzureVisionLLMError(f"[Azure Vision] Failed to encode image: {exc}") from exc
 
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Make HTTP request to Azure OpenAI Vision API. Separated for test mocking.

@@ -98,23 +98,23 @@ class OpenAIVisionLLM(BaseVisionLLM):
         # Build API messages
         api_messages: list[dict[str, Any]] = []
         if messages:
-            api_messages.extend(
-                {"role": m.role, "content": m.content} for m in messages
-            )
+            api_messages.extend({"role": m.role, "content": m.content} for m in messages)
 
         # Append current text + image as multimodal user message
-        api_messages.append({
-            "role": "user",
-            "content": [
-                {"type": "text", "text": text},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{image.mime_type};base64,{image_base64}",
+        api_messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": text},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image.mime_type};base64,{image_base64}",
+                        },
                     },
-                },
-            ],
-        })
+                ],
+            }
+        )
 
         payload = {
             "model": self.model,
@@ -131,9 +131,7 @@ class OpenAIVisionLLM(BaseVisionLLM):
             error_msg = str(exc)
             if self.api_key:
                 error_msg = error_msg.replace(self.api_key, "[REDACTED]")
-            raise OpenAIVisionLLMError(
-                f"[OpenAI Vision] API call failed: {error_msg}"
-            ) from exc
+            raise OpenAIVisionLLMError(f"[OpenAI Vision] API call failed: {error_msg}") from exc
 
         try:
             content = response_data["choices"][0]["message"]["content"]
@@ -182,9 +180,7 @@ class OpenAIVisionLLM(BaseVisionLLM):
         except Exception as exc:
             if isinstance(exc, OpenAIVisionLLMError):
                 raise
-            raise OpenAIVisionLLMError(
-                f"[OpenAI Vision] Failed to encode image: {exc}"
-            ) from exc
+            raise OpenAIVisionLLMError(f"[OpenAI Vision] Failed to encode image: {exc}") from exc
 
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Make HTTP request to OpenAI Vision API. Separated for test mocking.

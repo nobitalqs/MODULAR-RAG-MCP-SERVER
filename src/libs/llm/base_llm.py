@@ -85,15 +85,10 @@ class BaseLLM(ABC):
 
         for msg in messages:
             if not isinstance(msg, Message):
-                raise TypeError(
-                    f"Expected Message instance, got {type(msg).__name__}"
-                )
+                raise TypeError(f"Expected Message instance, got {type(msg).__name__}")
             if msg.role not in VALID_ROLES:
                 raise ValueError(
-                    f"Invalid role '{msg.role}'. "
-                    f"Must be one of: {', '.join(sorted(VALID_ROLES))}"
+                    f"Invalid role '{msg.role}'. Must be one of: {', '.join(sorted(VALID_ROLES))}"
                 )
             if not msg.content or not msg.content.strip():
-                raise ValueError(
-                    f"Message with role '{msg.role}' has empty content"
-                )
+                raise ValueError(f"Message with role '{msg.role}' has empty content")

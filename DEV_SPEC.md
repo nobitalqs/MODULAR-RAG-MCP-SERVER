@@ -1795,8 +1795,7 @@ smart-knowledge-hub/
 │   │   │   ├── base_splitter.py         # Splitter 抽象基类
 │   │   │   ├── splitter_factory.py      # Splitter 工厂
 │   │   │   ├── recursive_splitter.py    # RecursiveCharacterTextSplitter 实现
-│   │   │   ├── semantic_splitter.py     # (扩展预留) 语义切分实现
-│   │   │   └── fixed_length_splitter.py # (扩展预留) 定长切分实现
+│   │   │   └── (扩展预留: 语义切分、定长切分等可通过实现 BaseSplitter 接口新增)
 │   │   │
 │   │   ├── vector_store/                # VectorStore 抽象
 │   │   │   ├── __init__.py
@@ -2007,7 +2006,7 @@ smart-knowledge-hub/
 | `LLMClient` | Azure OpenAI | OpenAI / Ollama / DeepSeek |
 | `VisionLLMClient` | Azure OpenAI Vision (GPT-4o) / OpenAI Vision (GPT-4o) | Ollama Vision (LLaVA) / DashScope (Qwen-VL, 未实现) |
 | `EmbeddingClient` | OpenAI text-embedding-3 | BGE / Ollama 本地模型 |
-| `Loader` | PDF Loader（PyMuPDF） / MarkdownLoader / SourceCodeLoader | NotebookLoader 等 |
+| `Loader` | PDF Loader（PyMuPDF） / MarkdownLoader / SourceCodeLoader | — |
 | `FileIntegrity` | SQLite (`data/db/ingestion_history.db`) | Redis（分布式）/ PostgreSQL（企业级）/ JSON文件（测试） |
 | `Splitter` | RecursiveCharacterTextSplitter | Semantic / FixedLen |
 | `VectorStore` | Chroma | Qdrant / Pinecone / Milvus |
@@ -2400,8 +2399,7 @@ memory:
    - 目的：三项独立改进提升 RAG 检索质量。第一层：混合检索权重可配置化（暴露 dense/sparse 权重到 settings）；第二层：PDF 表格与公式结构化提取（PyMuPDF find_tables + pix2tex LaTeX OCR）；第三层（Phase 2，暂不实现）：分层 Memory 存储（热/温/冷三层，LRU 淘汰降级而非删除）。
    - 设计文档：`docs/superpowers/specs/2026-03-12-rag-improvements-design.md`
 12. **阶段 L：多格式文档摄入与远程摄入（Multi-Format Loader + Ingestion MCP Tool）**
-   - 目的：扩展文档摄入能力，分两阶段实施。Phase 1：LoaderFactory（扩展名路由）、MarkdownLoader（frontmatter 扁平合并，暂不处理图片）、SourceCodeLoader（`.C/.cpp/.py/.h` 语言检测）、`ingest_document` MCP Tool（外部客户端远程触发摄入）、Pipeline 格式无关化、ChunkRefiner doc_type 适配。Phase 2：NotebookLoader（cell 感知）、MarkdownSplitter（heading 层级 + protected regions）。
-   - 设计文档：`docs/superpowers/specs/2026-03-13-md-notebook-loader-design.md`
+   - 目的：扩展文档摄入能力。LoaderFactory（扩展名路由）、MarkdownLoader（frontmatter 扁平合并，暂不处理图片）、SourceCodeLoader（`.C/.cpp/.py/.h` 语言检测）、`ingest_document` MCP Tool（外部客户端远程触发摄入）、Pipeline 格式无关化、ChunkRefiner doc_type 适配。
 13. **阶段 M：四层容错体系（4-Layer Resilience Stack）**
    - 目的：为所有 LLM/Embedding API 调用建立完整的生产级容错保护，按四层递进：Layer 1 限流（Rate Limiter 重构至 Provider 级别）→ Layer 2 重试（Retry with Backoff 新增）→ Layer 3 熔断（Circuit Breaker 扩展至 Embedding）→ Layer 4 容错（Failover 配置 DeepSeek 备用 Provider）。四个任务相互独立，可并行开发。
    - 设计文档：`docs/superpowers/specs/2026-03-17-resilience-stack-design.md`
@@ -2573,11 +2571,8 @@ memory:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| L7 | NotebookLoader（cell 感知转换） | [-] | - | (未来扩展) nbformat v4 解析，暂不考虑 ipynb 文档摄入 |
-| L8 | MarkdownSplitter（heading 感知 + protected regions） | [-] | - | (未来扩展) heading 层级分隔符 + 代码块/表格保护，当前 RecursiveSplitter 已满足需求 |
-| L9 | Phase 2 单元测试 + 集成测试 | [-] | - | (未来扩展) 随 L7/L8 实现时补充 |
+| ~~L7-L9~~ | ~~Phase 2 (NotebookLoader / MarkdownSplitter)~~ | [-] | - | 已删除，不再计划实现 |
 
-> **设计文档**：`docs/superpowers/specs/2026-03-13-md-notebook-loader-design.md`
 
 #### 阶段 M：四层容错体系 (4-Layer Resilience Stack)
 

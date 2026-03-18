@@ -2565,10 +2565,10 @@ memory:
 
 | 任务编号 | 任务名称 | 状态 | 完成日期 | 备注 |
 |---------|---------|------|---------|------|
-| M1 | Layer 2: Retry with Backoff | [ ] | - | BaseLLM/BaseEmbedding 层加指数退避重试装饰器，可重试错误码 429/500/502/503，max_retries=3，backoff_base=1.0s |
-| M2 | Layer 1: Rate Limiter 重构至 Provider 级别 | [ ] | - | 从 query_knowledge_hub 入口移到 BaseLLM.chat()/BaseEmbedding.embed() 装饰器，所有 API 调用自动受限 |
-| M3 | Layer 3: Circuit Breaker 扩展至 Embedding | [ ] | - | EmbeddingFactory 新增 create_with_failover()，Embedding API 获得熔断保护 |
-| M4 | Layer 4: Failover 配置 DeepSeek 备用 Provider | [ ] | - | settings.yaml 配置 fallback_providers: deepseek/deepseek-chat，验证主备切换 |
+| M1 | Layer 2: Retry with Backoff | [x] | 2026-03-18 | retry_with_backoff装饰器+RetryableError基类+集成到4个LLM+3个Embedding provider+34个测试 |
+| M2 | Layer 1: Rate Limiter 重构至 Provider 级别 | [x] | 2026-03-18 | RateLimitedLLM装饰器包装器+从query入口移到Provider级别+13个测试 |
+| M3 | Layer 3: Circuit Breaker 扩展至 Embedding | [x] | 2026-03-18 | EmbeddingChain(BaseEmbedding)+EmbeddingFactory.create_with_failover()+EmbeddingSettings.circuit_breaker+9个测试 |
+| M4 | Layer 4: Failover 配置 DeepSeek 备用 Provider | [x] | 2026-03-18 | settings.yaml配置circuit_breaker+fallback_providers:deepseek/deepseek-chat+query_knowledge_hub/pipeline联调+2个测试 |
 
 > **设计文档**：`docs/superpowers/specs/2026-03-17-resilience-stack-design.md`
 > **依赖关系**：M1-M4 相互独立，可并行开发。M4 依赖现有 DeepSeekLLM 实现（已在 Phase B 完成）。
@@ -2591,8 +2591,8 @@ memory:
 | 阶段 J | 9 | 9 | 100% |
 | 阶段 K | 5+1★ | 5 | 100% |
 | 阶段 L | 6+3 | 6 | 67% |
-| 阶段 M | 4 | 0 | 0% |
-| **总计** | **96** | **89** | **93%** |
+| 阶段 M | 4 | 4 | 100% |
+| **总计** | **96** | **93** | **97%** |
 
 
 ---

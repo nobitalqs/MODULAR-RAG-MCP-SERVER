@@ -392,18 +392,36 @@
 - **引用透明 (Citation Transparency)**：所有检索结果必须携带完整的来源信息，支持 Client 端展示"回答依据"，增强用户对 AI 输出的信任。
 - **多模态友好 (Multimodal-Ready)**：返回格式应支持文本与图像等多种内容类型，为未来的富媒体展示预留扩展空间。
 
-#### 3.2.2 传输协议：Stdio 本地通信
+#### 3.2.2 传输协议：双模式通信 (Stdio + Streamable HTTP)
 
-本项目采用 **Stdio Transport** 作为唯一通信模式。
+本项目支持 **两种 MCP Transport 模式**，通过命令行参数切换：
 
-- **工作方式**：Client（VS Code Copilot、Claude Desktop）以子进程方式启动我们的 Server，双方通过标准输入/输出交换 JSON-RPC 消息。
-- **选型理由**：
-	- **零配置**：无需网络端口、无需鉴权，用户只需在 Client 配置文件中指定启动命令即可使用。
-	- **隐私安全**：数据不经过网络，天然适合处理私有知识库与敏感业务数据。
-	- **契合定位**：Stdio 完美适配开发者本地工作流，满足私有知识管理与快速原型验证需求。
-- **实现约束**：
-	- `stdout` 仅输出合法 MCP 消息，禁止混入任何日志或调试信息。
-	- 日志统一输出至 `stderr`，避免污染通信通道。
+```bash
+python main.py                          # Stdio（默认，本地开发）
+python main.py --transport http         # Streamable HTTP（远程部署）
+python main.py --transport http --host 0.0.0.0 --port 9000
+```
+
+**1. Stdio Transport（默认模式）**
+
+- **工作方式**：Client（VS Code Copilot、Claude Desktop）以子进程方式启动 Server，通过标准输入/输出交换 JSON-RPC 消息。
+- **适用场景**：本地开发、隐私敏感、零配置。
+- **实现约束**：`stdout` 仅输出合法 MCP 消息，日志统一输出至 `stderr`。
+
+**2. Streamable HTTP Transport**
+
+- **工作方式**：Server 作为 HTTP 服务运行（Starlette + Uvicorn），Client 通过 HTTP POST 发送 JSON-RPC 请求，Server 通过 SSE (Server-Sent Events) 返回流式响应。
+- **适用场景**：远程部署、Docker 容器化、多用户并发、负载均衡。
+- **技术栈**：`StreamableHTTPSessionManager`（MCP SDK 内置）+ Starlette ASGI + Uvicorn。
+- **端点**：`POST http://{host}:{port}/mcp`，支持 session 管理和 SSE 流式。
+
+| 维度 | Stdio | Streamable HTTP |
+|------|-------|----------------|
+| 部署方式 | Client 启动子进程 | 独立 HTTP 服务 |
+| 网络 | 无（进程间通信） | HTTP/HTTPS |
+| 多用户 | 单用户 | 多用户并发 |
+| Docker 支持 | 不适合 | 原生支持 |
+| 配置复杂度 | 零配置 | 需指定 host/port |
 
 #### 3.2.3 SDK 与实现库选型
 

@@ -11,9 +11,10 @@ import os
 from typing import Any
 
 from src.libs.embedding.base_embedding import BaseEmbedding
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class AzureEmbeddingError(RuntimeError):
+class AzureEmbeddingError(RuntimeError, RetryableError):
     """Raised when Azure OpenAI embedding API call fails."""
 
 
@@ -90,6 +91,45 @@ class AzureEmbedding(BaseEmbedding):
 
         return openai.AzureOpenAI(**client_kwargs)
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
+    def _call_api(self, texts: list[str]) -> list[list[float]]:
+        """Call the Azure OpenAI embeddings API. Separated for retry and test mocking.
+
+        Args:
+            texts: List of text strings to embed.
+
+        Returns:
+            List of embedding vectors.
+
+        Raises:
+            AzureEmbeddingError: With status_code set for retryable HTTP errors.
+        """
+        try:
+            import openai
+        except ImportError as e:
+            raise ImportError(
+                "OpenAI SDK is not installed. "
+                "Install with: pip install openai"
+            ) from e
+
+        client = self._create_client()
+
+        try:
+            response = client.embeddings.create(
+                input=texts,
+                model=self.deployment_name,
+                dimensions=self.dimensions,
+            )
+            return [item.embedding for item in response.data]
+        except openai.APIStatusError as e:
+            err = AzureEmbeddingError(f"Azure OpenAI embedding API call failed: {e}")
+            err.status_code = e.status_code
+            raise err from e
+        except Exception as e:
+            raise AzureEmbeddingError(
+                f"Azure OpenAI embedding API call failed: {e}"
+            ) from e
+
     def embed(
         self,
         texts: list[str],
@@ -111,20 +151,7 @@ class AzureEmbedding(BaseEmbedding):
             AzureEmbeddingError: If API call fails.
         """
         self.validate_texts(texts)
-
-        client = self._create_client()
-
-        try:
-            response = client.embeddings.create(
-                input=texts,
-                model=self.deployment_name,
-                dimensions=self.dimensions,
-            )
-            return [item.embedding for item in response.data]
-        except Exception as e:
-            raise AzureEmbeddingError(
-                f"Azure OpenAI embedding API call failed: {e}"
-            ) from e
+        return self._call_api(texts)
 
     def get_dimension(self) -> int:
         """Return embedding vector dimensionality.

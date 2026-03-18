@@ -12,9 +12,10 @@ from typing import Any
 import httpx
 
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class AzureLLMError(RuntimeError):
+class AzureLLMError(RuntimeError, RetryableError):
     """Raised when the Azure OpenAI API returns an error."""
 
 
@@ -126,10 +127,9 @@ class AzureLLM(BaseLLM):
                 raw_response=response_data,
             )
         except (KeyError, IndexError, TypeError) as exc:
-            raise AzureLLMError(
-                f"[Azure] Unexpected response format: {exc}"
-            ) from exc
+            raise AzureLLMError(f"[Azure] Unexpected response format: {exc}") from exc
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Internal method to call the Azure OpenAI API. Separated for test mocking.
 
@@ -140,9 +140,9 @@ class AzureLLM(BaseLLM):
             Parsed JSON response.
 
         Raises:
-            httpx.TimeoutException: If the request times out.
+            AzureLLMError: With status_code set for retryable HTTP errors.
+            httpx.TimeoutException: If the request times out (also retried).
             httpx.ConnectError: If connection fails.
-            httpx.HTTPStatusError: If the API returns an error status.
         """
         # Azure uses deployment-based URL structure
         url = (
@@ -154,7 +154,12 @@ class AzureLLM(BaseLLM):
             "Content-Type": "application/json",
         }
 
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            err = AzureLLMError(str(exc))
+            err.status_code = exc.response.status_code
+            raise err from exc

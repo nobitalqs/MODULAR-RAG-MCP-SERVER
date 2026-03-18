@@ -10,9 +10,10 @@ import os
 from typing import Any
 
 from src.libs.embedding.base_embedding import BaseEmbedding
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class OllamaEmbeddingError(RuntimeError):
+class OllamaEmbeddingError(RuntimeError, RetryableError):
     """Raised when Ollama embedding API call fails."""
 
 
@@ -47,6 +48,7 @@ class OllamaEmbedding(BaseEmbedding):
             or "http://localhost:11434"
         )
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
     def _call_api(self, texts: list[str]) -> list[list[float]]:
         """Call Ollama /api/embed endpoint.
 
@@ -57,7 +59,8 @@ class OllamaEmbedding(BaseEmbedding):
             List of embedding vectors.
 
         Raises:
-            OllamaEmbeddingError: If API call fails.
+            OllamaEmbeddingError: With status_code set for retryable HTTP errors.
+            httpx.TimeoutException: If the request times out (also retried).
         """
         try:
             import httpx
@@ -80,9 +83,11 @@ class OllamaEmbedding(BaseEmbedding):
                 data = response.json()
                 return data["embeddings"]
         except httpx.HTTPStatusError as e:
-            raise OllamaEmbeddingError(
+            err = OllamaEmbeddingError(
                 f"Ollama HTTP error {e.response.status_code}: {e.response.text}"
-            ) from e
+            )
+            err.status_code = e.response.status_code
+            raise err from e
         except httpx.RequestError as e:
             raise OllamaEmbeddingError(
                 f"Ollama connection error: {e}"

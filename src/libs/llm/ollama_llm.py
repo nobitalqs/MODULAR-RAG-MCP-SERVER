@@ -12,9 +12,10 @@ from typing import Any
 import httpx
 
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class OllamaLLMError(RuntimeError):
+class OllamaLLMError(RuntimeError, RetryableError):
     """Raised when the Ollama API returns an error."""
 
 
@@ -43,11 +44,7 @@ class OllamaLLM(BaseLLM):
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.base_url = (
-            base_url
-            or os.environ.get("OLLAMA_BASE_URL")
-            or "http://localhost:11434"
-        )
+        self.base_url = base_url or os.environ.get("OLLAMA_BASE_URL") or "http://localhost:11434"
 
     def chat(
         self,
@@ -112,10 +109,9 @@ class OllamaLLM(BaseLLM):
                 raw_response=response_data,
             )
         except (KeyError, TypeError) as exc:
-            raise OllamaLLMError(
-                f"[Ollama] Unexpected response format: {exc}"
-            ) from exc
+            raise OllamaLLMError(f"[Ollama] Unexpected response format: {exc}") from exc
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Internal method to call the Ollama API. Separated for test mocking.
 
@@ -126,15 +122,20 @@ class OllamaLLM(BaseLLM):
             Parsed JSON response.
 
         Raises:
-            httpx.TimeoutException: If the request times out.
+            OllamaLLMError: With status_code set for retryable HTTP errors.
+            httpx.TimeoutException: If the request times out (also retried).
             httpx.ConnectError: If connection fails.
-            httpx.HTTPStatusError: If the API returns an error status.
         """
         url = f"{self.base_url}/api/chat"
         headers = {"Content-Type": "application/json"}
 
         # Longer timeout for local models (they may be slower than cloud APIs)
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        try:
+            with httpx.Client(timeout=120.0) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            err = OllamaLLMError(str(exc))
+            err.status_code = exc.response.status_code
+            raise err from exc

@@ -12,9 +12,10 @@ from typing import Any
 import httpx
 
 from src.libs.llm.base_llm import BaseLLM, ChatResponse, Message
+from src.libs.resilience.retry import RetryableError, retry_with_backoff
 
 
-class OpenAILLMError(RuntimeError):
+class OpenAILLMError(RuntimeError, RetryableError):
     """Raised when the OpenAI API returns an error."""
 
 
@@ -52,8 +53,7 @@ class OpenAILLM(BaseLLM):
 
         if not self.api_key:
             raise ValueError(
-                "[OpenAI] Missing API key. Set OPENAI_API_KEY env var "
-                "or pass api_key parameter."
+                "[OpenAI] Missing API key. Set OPENAI_API_KEY env var or pass api_key parameter."
             )
 
     def chat(
@@ -114,10 +114,9 @@ class OpenAILLM(BaseLLM):
                 raw_response=response_data,
             )
         except (KeyError, IndexError, TypeError) as exc:
-            raise OpenAILLMError(
-                f"[OpenAI] Unexpected response format: {exc}"
-            ) from exc
+            raise OpenAILLMError(f"[OpenAI] Unexpected response format: {exc}") from exc
 
+    @retry_with_backoff(max_retries=3, backoff_base=1.0)
     def _call_api(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Internal method to call the OpenAI API. Separated for test mocking.
 
@@ -128,9 +127,9 @@ class OpenAILLM(BaseLLM):
             Parsed JSON response.
 
         Raises:
-            httpx.TimeoutException: If the request times out.
+            OpenAILLMError: With status_code set for retryable HTTP errors.
+            httpx.TimeoutException: If the request times out (also retried).
             httpx.ConnectError: If connection fails.
-            httpx.HTTPStatusError: If the API returns an error status.
         """
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -138,7 +137,12 @@ class OpenAILLM(BaseLLM):
             "Content-Type": "application/json",
         }
 
-        with httpx.Client(timeout=30.0) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response.json()
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as exc:
+            err = OpenAILLMError(str(exc))
+            err.status_code = exc.response.status_code
+            raise err from exc
